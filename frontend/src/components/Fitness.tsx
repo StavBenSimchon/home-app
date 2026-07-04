@@ -521,7 +521,7 @@ function WeekCalendar({ weekLabel, entries, onToggle, onDelete, onOpenWorkout }:
                 style={{ background: done ? "var(--primary)" : "var(--bg)", borderRadius: 6, padding: "0.25rem 0.5rem", fontSize: "0.78rem", display: "flex", alignItems: "center", gap: "0.35rem", cursor: "pointer", opacity: done ? 0.7 : 1, textDecoration: done ? "line-through" : "none" }}>
                 <input type="checkbox" checked={done} onChange={() => onToggle(e)} onClick={e => e.stopPropagation()} style={{ accentColor: "var(--primary)", cursor: "pointer" }} />
                 <span style={{ flex: 1 }}>{e.activity}{e.duration_minutes ? ` (${e.duration_minutes}m)` : ""}{e.frequency_hint ? ` · ${e.frequency_hint}` : ""}</span>
-                <button onClick={e => { e.stopPropagation(); onDelete(e.id); }} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "0.75rem", padding: 0, lineHeight: 1, flexShrink: 0 }}>✕</button>
+                <button onClick={ev => { ev.stopPropagation(); onDelete(e.id); }} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "0.75rem", padding: 0, lineHeight: 1, flexShrink: 0 }}>✕</button>
               </div>
             );
           })}
@@ -538,9 +538,9 @@ function WeekCalendar({ weekLabel, entries, onToggle, onDelete, onOpenWorkout }:
                 return (
                   <div key={e.id} onClick={() => onOpenWorkout(e)}
                     style={{ fontSize: "0.76rem", lineHeight: 1.4, display: "flex", alignItems: "flex-start", gap: "0.2rem", cursor: "pointer", borderRadius: 4, padding: "1px 0", textDecoration: done ? "line-through" : "none", opacity: done ? 0.5 : 1 }}>
-                    <input type="checkbox" checked={done} onChange={() => onToggle(e)} onClick={e => e.stopPropagation()} style={{ marginTop: 2, accentColor: "var(--primary)", cursor: "pointer", flexShrink: 0 }} />
+                    <input type="checkbox" checked={done} onChange={() => onToggle(e)} onClick={ev => ev.stopPropagation()} style={{ marginTop: 2, accentColor: "var(--primary)", cursor: "pointer", flexShrink: 0 }} />
                     <span style={{ flex: 1 }}>{e.activity}{e.duration_minutes ? ` · ${e.duration_minutes}m` : ""}</span>
-                    <button onClick={e => { e.stopPropagation(); onDelete(e.id); }} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "0.65rem", padding: 0, lineHeight: 1, flexShrink: 0 }}>✕</button>
+                    <button onClick={ev => { ev.stopPropagation(); onDelete(e.id); }} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "0.65rem", padding: 0, lineHeight: 1, flexShrink: 0 }}>✕</button>
                   </div>
                 );
               })}
