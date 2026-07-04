@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_session
 from app.services.ai_service import generate_questions, generate_plan, create_goal_with_plan, continue_plan, update_goal_with_plan
 
-router = APIRouter(prefix="/ai", tags=["ai"])
+router = APIRouter(prefix="/api/ai", tags=["ai"])
 
 
 class ChatRequest(BaseModel):
