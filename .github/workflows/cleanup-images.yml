@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       packages:
-        description: "Comma-separated package names (e.g. home-app/backend,home-app/frontend)"
+        description: "Comma-separated package names"
         required: true
         default: "home-app/backend,home-app/frontend"
       keep:
-        description: "Number of non-versioned images to keep"
+        description: "Number of non-release images to keep"
         required: false
         default: "3"
 
@@ -16,138 +16,80 @@ permissions:
   contents: read
   packages: write
 
-env:
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
 jobs:
   cleanup:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Cleanup old container images
+      - name: Cleanup old GHCR images
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+          KEEP: ${{ github.event.inputs.keep }}
+          PACKAGES: ${{ github.event.inputs.packages }}
         run: |
-          echo "Starting cleanup for GitHub Packages container images..."
-          echo "Owner: ${{ github.repository_owner }}"
-          echo "Packages to process: ${{ github.event.inputs.packages }}"
-          echo "Versions to keep per package: ${{ github.event.inputs.keep || 3 }}"
-          
-          IFS=',' read -ra PACKAGES <<< "${{ github.event.inputs.packages }}"
-          KEEP="${{ github.event.inputs.keep || 3 }}"
+          set -euo pipefail
 
-          echo ""
+          IFS=',' read -ra PKGS <<< "$PACKAGES"
 
-          for PKG in "${PACKAGES[@]}"; do
-            PKG="$(echo "$PKG" | xargs)"
-            echo "=== Processing package: $PKG ==="
-            ENCODED="$(echo "$PKG" | sed 's|/|%2F|g')"
-            
-            echo "Encoded package name: $ENCODED"
-            
-            # Get versions from GitHub API
-            echo "Fetching versions..."
-            VERSIONS_URL="https://api.github.com/users/${{ github.repository_owner }}/packages/container/$ENCODED/versions"
-            echo "API URL: $VERSIONS_URL"
-            
-            # Use curl to fetch with proper authentication and headers
-            curl_output=$(curl -s -w "%{http_code}" -H "Authorization: token $GITHUB_TOKEN" \
-                            -H "Accept: application/vnd.github.v3+json" \
-                            "$VERSIONS_URL" 2>&1)
-            
-            # Extract HTTP status and response body
-            HTTP_STATUS="${curl_output%%\*<}"             # Status code before <
-            RESPONSE_BODY="${curl_output#*<}"           # Body after <
-            
-            echo "HTTP Status: $HTTP_STATUS"
-            echo "Response length: ${#RESPONSE_BODY} characters"
-            
-            # Check for errors
-            if [[ "$HTTP_STATUS" != "200" ]]; then
-              echo "ERROR: API returned HTTP $HTTP_STATUS"
-              echo "Response: $RESPONSE_BODY"
-              continue
-            fi
-            
-            if [[ -z "$RESPONSE_BODY" ]]; then
-              echo "ERROR: Empty response from API"
-              continue
-            fi
-            
-            # Check if response looks like JSON (starts with { or [)
-            FIRST_CHAR="$(echo "$RESPONSE_BODY" | head -c 1)"
-            if [[ "$FIRST_CHAR" != "{" && "$FIRST_CHAR" != "[" ]]; then
-              echo "ERROR: Response is not valid JSON (starts with: '$FIRST_CHAR')"
-              echo "First 200 chars of response: $RESPONSE_BODY | head -c 200"
-              continue
-            fi
-            
-            echo "Response appears to be valid JSON"
-            
-            # Convert JSON to line-delimited format
-            echo "Parsing JSON..."
-            echo "$RESPONSE_BODY" | jq -c '.[] | {id, tags: .metadata.container.tags, created_at}' > /tmp/versions.json 2>/dev/null || {
-              echo "ERROR: Failed to parse JSON"
-              echo "Sample response (first 500 chars): $RESPONSE_BODY | head -c 500"
-              continue
-            }
-            
-            TOTAL=$(wc -l < /tmp/versions.json || echo 0)
-            echo "Total versions found: $TOTAL"
-            
-            KEEP_IDS=()
-            DELETE_IDS=()
-            TEMP_NONVER="/tmp/nonver.json"
-            
-            echo "Categorizing versions..."
-            while IFS= read -r line; do
-              [[ -z "$line" ]] && continue
+          for PKG in "${PKGS[@]}"; do
+            PKG=$(echo "$PKG" | xargs)
+            ENCODED=$(echo "$PKG" | sed 's/\//%2F/g')
 
-              ID="$(echo "$line" | jq -r '.id')"
-              TAGS="$(echo "$line" | jq -r '.tags | if length == 0 then empty else join(",") end')"
+            echo "Processing $PKG"
 
-              if [[ -z "$TAGS" ]]; then
-                echo "  Untagged version will be deleted: $ID"
-                DELETE_IDS+=("$ID")
-              elif echo "$TAGS" | tr ',' '\n' | grep -qE '^v'; then
-                echo "  Versioned (v*) version will be kept: $ID"
-                KEEP_IDS+=("$ID")
-              else
-                echo "  Non-versioned version will be kept if in top $KEEP: $ID"
-                echo "$line" >> "$TEMP_NONVER"
-              fi
-            done < /tmp/versions.json
-            
-            if [[ -f "$TEMP_NONVER" ]]; then
-              echo "Sorting non-versioned versions by creation date..."
-              jq -s 'sort_by(.created_at) | reverse | .[]' "$TEMP_NONVER" > /tmp/sorted.json
-              
-              COUNT=0
-              while IFS= read -r line; do
-                ID="$(echo "$line" | jq -r '.id')"
-                if [[ $COUNT -lt $KEEP ]]; then
-                  echo "  Keeping (in top $KEEP): $ID"
-                  KEEP_IDS+=("$ID")
-                else
-                  echo "  Deleting (beyond limit): $ID"
-                  DELETE_IDS+=("$ID")
-                fi
-                COUNT=$((COUNT + 1))
-              done < /tmp/sorted.json
+            # Try org endpoint first, then user
+            URL="https://api.github.com/orgs/$OWNER/packages/container/$ENCODED/versions?per_page=100"
+            STATUS=$(curl -s -o versions.json -w "%{http_code}" \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "$URL")
+
+            if [ "$STATUS" != "200" ]; then
+              URL="https://api.github.com/users/$OWNER/packages/container/$ENCODED/versions?per_page=100"
+              STATUS=$(curl -s -o versions.json -w "%{http_code}" \
+                -H "Authorization: Bearer $GITHUB_TOKEN" \
+                -H "Accept: application/vnd.github+json" \
+                "$URL")
             fi
 
-            echo ""
-            echo "Summary for $PKG:"
-            echo "  Keeping: ${#KEEP_IDS[@]} versions"
-            echo "  Deleting: ${#DELETE_IDS[@]} versions"
-            
-            for ID in "${DELETE_IDS[@]}"; do
-              echo "  Deleting version $ID..."
-              if curl -s -f -X DELETE -H "Authorization: token $GITHUB_TOKEN" \
-                   -H "Accept: application/vnd.github.v3+json" \
-                   "https://api.github.com/users/${{ github.repository_owner }}/packages/container/$ENCODED/versions/$ID"; then
-                echo "  ✓ Successfully deleted version $ID"
-              else
-                echo "  ✗ Failed to delete version $ID"
-              fi
+            if [ "$STATUS" != "200" ]; then
+              echo "Failed to fetch versions ($STATUS)"
+              cat versions.json
+              continue
+            fi
+
+            DELETE_IDS=$(
+              jq -r --argjson keep "$KEEP" '
+                map(
+                  . + {
+                    release: (
+                      (.metadata.container.tags // [])
+                      | any(test("^v"))
+                    )
+                  }
+                )
+                | map(select(.release == false))
+                | sort_by(.created_at)
+                | reverse
+                | .[$keep:]
+                | .[].id
+              ' versions.json
+            )
+
+            if [ -z "$DELETE_IDS" ]; then
+              echo "Nothing to delete."
+              continue
+            fi
+
+            for ID in $DELETE_IDS; do
+              echo "Deleting version $ID"
+
+              curl -s -X DELETE \
+                -H "Authorization: Bearer $GITHUB_TOKEN" \
+                -H "Accept: application/vnd.github+json" \
+                "${URL%/versions*}/versions/$ID"
+
+              echo
             done
-            
-            echo ""
           done
