@@ -28,4 +28,4 @@ jobs:
           helm dependency update helm
           version="$(grep '^version:' helm/Chart.yaml | awk '{print $2}')"
           helm package helm -d /tmp/charts
-          helm push "/tmp/charts/home-app-${version}.tgz" "oci://ghcr.io/${{ github.repository }}"
+          helm push "/tmp/charts/home-app-${version}.tgz" "oci://ghcr.io/${{ github.repository_owner }}"
