@@ -3,7 +3,7 @@ global: {}
 
 # -- Docker image settings
 image:
-  repository: ghcr.io/home-app
+  repository: stavbensimchon/home-app
   pullPolicy: Always
   tag: "latest"
 

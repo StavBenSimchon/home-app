@@ -4,12 +4,12 @@
 
 {{- define "home-app.backend.image" -}}
 {{- $reg := default "ghcr.io" .Values.global.imageRegistry }}
-{{- printf "%s/%s/backend:%s" $reg (default "home-app" (regexFind "[^/]+$" .Values.image.repository)) .Values.image.tag }}
+{{- printf "%s/%s/backend:%s" $reg .Values.image.repository .Values.image.tag }}
 {{- end }}
 
 {{- define "home-app.frontend.image" -}}
 {{- $reg := default "ghcr.io" .Values.global.imageRegistry }}
-{{- printf "%s/%s/frontend:%s" $reg (default "home-app" (regexFind "[^/]+$" .Values.image.repository)) .Values.image.tag }}
+{{- printf "%s/%s/frontend:%s" $reg .Values.image.repository .Values.image.tag }}
 {{- end }}
 
 {{- define "home-app.databaseUrl" -}}
