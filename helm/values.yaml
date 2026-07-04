@@ -62,6 +62,8 @@ frontend:
 # -- Gateway API HTTPRoute configuration
 httproute:
   hostname: home-app.example.com
+  # -- Backend request timeout (e.g. "180s", "300s")
+  backendTimeout: ""
   # -- Gateway ref (namespace/name)
   parentRef:
     namespace: ""
