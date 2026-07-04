@@ -16,41 +16,63 @@ permissions:
   contents: read
   packages: write
 
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 jobs:
   cleanup:
     runs-on: ubuntu-latest
     steps:
       - name: Cleanup old container images
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          OWNER: ${{ github.repository_owner }}
-          KEEP: ${{ github.event.inputs.keep || 3 }}
         run: |
+          # Install jq if not present
+          if ! command -v jq &> /dev/null; then
+            sudo apt-get update && sudo apt-get install -y jq
+          fi
+
           IFS=',' read -ra PACKAGES <<< "${{ github.event.inputs.packages }}"
 
           for PKG in "${PACKAGES[@]}"; do
             PKG="$(echo "$PKG" | xargs)"
-            ENCODED="$(echo "$PKG" | sed 's|/|%2F|g')"
             echo "=== $PKG ==="
+            ENCODED="$(echo "$PKG" | sed 's|/|%2F|g')"
 
-            # Fetch all versions
-            if ! gh api --paginate "/users/$OWNER/packages/container/$ENCODED/versions?per_page=100" 2>/dev/null > /tmp/raw.json; then
-              echo "  Failed to fetch versions"
+            echo "  Fetching versions for $PKG"
+            API_URL="https://api.github.com/users/${{ github.repository_owner }}/packages/container/$ENCODED/versions"
+            RESPONSE_FILE="/tmp/gh_response.json"
+
+            # First request to get the versions with proper pagination
+            curl -s -f -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -H "Accept: application/vnd.github.v3+json" "$API_URL" > "$RESPONSE_FILE"
+            if [[ $? -ne 0 ]]; then
+              echo "  Failed to fetch versions from $API_URL"
+              echo "  Response file content:"
+              cat "$RESPONSE_FILE"
               continue
             fi
 
-            # Parse: one JSON object per line with id, tags, created_at
-            if ! jq -c '.[] | {id, tags: .metadata.container.tags, created_at}' /tmp/raw.json 2>/dev/null > /tmp/versions.json; then
-              echo "  No versions found or parse error — raw output:"
-              head -c 500 /tmp/raw.json
-              echo ""
+            # Check if we got any data
+            if [[ ! -s "$RESPONSE_FILE" ]]; then
+              echo "  No versions found"
+              continue
+            fi
+
+            echo "  Got response, processing versions..."
+            RESPONSE="$(cat $RESPONSE_FILE)"
+
+            # Parse and save to versions file
+            echo "$RESPONSE" | jq -c '.[] | {id, tags: .metadata.container.tags, created_at}' > /tmp/versions.json
+
+            if [[ $? -ne 0 ]]; then
+              echo "  Error parsing versions. Raw response:"
+              echo "$RESPONSE" | head -100
               continue
             fi
 
             KEEP_IDS=()
             DELETE_IDS=()
-            rm -f /tmp/nonver.json
+            TEMP_NONVER="/tmp/nonver.json"
 
+            echo "  Processing versions..."
             while IFS= read -r line; do
               [ -z "$line" ] && continue
               ID="$(echo "$line" | jq -r '.id')"
@@ -58,19 +80,21 @@ jobs:
 
               if [ -z "$TAGS" ]; then
                 DELETE_IDS+=("$ID")
+                echo "    Untagged version will be deleted: $ID"
               elif echo "$TAGS" | tr ',' '\n' | grep -qE '^v'; then
                 KEEP_IDS+=("$ID")
+                echo "    Versioned (v*) will be kept: $ID"
               else
-                echo "$line" >> /tmp/nonver.json
+                echo "$line" >> "$TEMP_NONVER"
               fi
             done < /tmp/versions.json
 
-            if [ -f /tmp/nonver.json ]; then
-              jq -s 'sort_by(.created_at) | reverse | .[]' /tmp/nonver.json > /tmp/sorted.json
+            if [ -f "$TEMP_NONVER" ]; then
+              jq -s 'sort_by(.created_at) | reverse | .[]' "$TEMP_NONVER" > /tmp/sorted.json
               COUNT=0
               while IFS= read -r line; do
                 ID="$(echo "$line" | jq -r '.id')"
-                if [ "$COUNT" -lt "$KEEP" ]; then
+                if [ $COUNT -lt ${{ github.event.inputs.keep || 3 }} ]; then
                   KEEP_IDS+=("$ID")
                 else
                   DELETE_IDS+=("$ID")
@@ -83,9 +107,11 @@ jobs:
             echo "  Deleting: ${#DELETE_IDS[@]} images"
 
             for ID in "${DELETE_IDS[@]}"; do
-              echo "  Deleting version $ID"
-              if ! gh api --method DELETE "/users/$OWNER/packages/container/$ENCODED/versions/$ID" --silent 2>/dev/null; then
-                echo "  Failed to delete $ID"
+              echo "    Deleting version $ID"
+              if curl -s -X DELETE -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -H "Accept: application/vnd.github.v3+json" "https://api.github.com/users/${{ github.repository_owner }}/packages/container/$ENCODED/versions/$ID"; then
+                echo "    Successfully deleted version $ID"
+              else
+                echo "    Failed to delete $ID"
               fi
             done
 
