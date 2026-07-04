@@ -11,38 +11,14 @@ const apps = [
 
 export default function Dashboard() {
   return (
-    <main
-      style={{
-        maxWidth: 960,
-        margin: "0 auto",
-        padding: "3rem 1.5rem",
-      }}
-    >
-      <h1
-        style={{
-          fontSize: "2rem",
-          fontWeight: 700,
-          marginBottom: "0.5rem",
-        }}
-      >
+    <main className="responsive-container">
+      <h1 style={{ fontSize: "clamp(1.5rem, 5vw, 2rem)", fontWeight: 700, marginBottom: "0.5rem" }}>
         Home
       </h1>
-      <p
-        style={{
-          color: "var(--text-muted)",
-          marginBottom: "2.5rem",
-          fontSize: "1.05rem",
-        }}
-      >
+      <p style={{ color: "var(--text-muted)", marginBottom: "2.5rem", fontSize: "1.05rem" }}>
         Your personal dashboard
       </p>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
-          gap: "1rem",
-        }}
-      >
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(240px, 100%), 1fr))", gap: "1rem" }}>
         {apps.map((app) => (
           <AppBox
             key={app.title}

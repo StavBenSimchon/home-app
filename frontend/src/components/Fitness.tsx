@@ -234,27 +234,27 @@ export default function Fitness() {
   }
 
   return (
-    <main style={{ maxWidth: 1080, margin: "0 auto", padding: "3rem 1.5rem" }}>
+    <main className="responsive-container">
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       <button onClick={() => navigate("/")} style={s.link}>&larr; Dashboard</button>
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-        <h1 style={{ fontSize: "1.75rem", fontWeight: 700 }}>Fitness</h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.5rem", flexWrap: "wrap", marginBottom: "1rem" }}>
+        <h1 style={{ fontSize: "clamp(1.35rem, 5vw, 1.75rem)", fontWeight: 700 }}>Fitness</h1>
         <button onClick={() => { resetGoalForm(); setEditingGoal(null); setShowGoalForm(true); }} style={s.btnPrimary}>+ New Goal</button>
       </div>
 
       {/* ---------- Chat ---------- */}
       {(chatStep === "idle" || chatStep === "input") && (
         <div style={{ ...s.card, marginBottom: "1.5rem" }}>
-          <div style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end" }}>
-            <div style={{ flex: 1 }}>
+          <div className="responsive-flex">
+            <div className="grow">
               <label style={{ ...s.label, marginBottom: "0.25rem" }}>Describe your fitness goal</label>
               <textarea value={chatInput} onChange={e => setChatInput(e.target.value)} placeholder='e.g. "I want to lose body fat from 25% to 10% in 6 months…"' rows={2}
                 style={{ ...s.input, resize: "vertical", fontFamily: "inherit", lineHeight: 1.5 }}
                 onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleStartChat(); } }} />
             </div>
             <button onClick={handleStartChat} disabled={chatPending || !chatInput.trim()}
-              style={{ ...s.btnPrimary, whiteSpace: "nowrap", minWidth: 120, height: 40, opacity: (!chatInput.trim() || chatPending) ? 0.6 : 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+              style={{ ...s.btnPrimary, whiteSpace: "nowrap", height: 40, opacity: (!chatInput.trim() || chatPending) ? 0.6 : 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
               {chatPending ? <>{SPINNER} Loading…</> : "Generate Plan"}
             </button>
           </div>
@@ -316,7 +316,7 @@ export default function Fitness() {
       {showGoalForm && (
         <Overlay onClose={() => { setShowGoalForm(false); setEditingGoal(null); }}>
           <h2 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem" }}>{editingGoal ? "Edit Goal" : "New Goal"}</h2>
-          <div style={s.grid2}>
+          <div className="responsive-grid-2">
             <label style={s.label}>Title *<input style={s.input} value={goalForm.title} onChange={e => setGoalForm({ ...goalForm, title: e.target.value })} /></label>
             <label style={s.label}>Description<input style={s.input} value={goalForm.description} onChange={e => setGoalForm({ ...goalForm, description: e.target.value })} /></label>
             <label style={s.label}>Metric name<input style={s.input} placeholder="e.g. Body Fat %" value={goalForm.metric_name} onChange={e => setGoalForm({ ...goalForm, metric_name: e.target.value })} /></label>
@@ -359,9 +359,10 @@ export default function Fitness() {
               )}
             </div>
           )}
-          <div style={{ display: "flex", gap: "0.4rem" }}>
+          <div className="responsive-flex" style={{ gap: "0.4rem" }}>
             <input value={refineInput} onChange={e => setRefineInput(e.target.value)} placeholder="Ask to change exercises, add jogging, adjust difficulty…"
-              style={{ ...s.input, flex: 1, marginTop: 0 }}
+              style={{ ...s.input, marginTop: 0 }}
+              className="grow"
               onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleRefineSend(); } }} />
             <button onClick={handleRefineSend} disabled={!refineInput.trim() || refinePending}
               style={{ ...s.btnPrimary, whiteSpace: "nowrap", opacity: (!refineInput.trim() || refinePending) ? 0.6 : 1 }}>Send</button>
@@ -393,7 +394,7 @@ export default function Fitness() {
       {showEntryForm && (
         <Overlay onClose={() => setShowEntryForm(false)}>
           <h2 style={{ fontSize: "1.25rem", fontWeight: 600, marginBottom: "1rem" }}>New Activity</h2>
-          <div style={s.grid2}>
+          <div className="responsive-grid-2">
             <label style={s.label}>Week *<input style={s.input} type="number" min="1" value={entryForm.week_number} onChange={e => setEntryForm({ ...entryForm, week_number: e.target.value })} /></label>
             <label style={s.label}>Day<select style={s.input} value={entryForm.day_of_week} onChange={e => setEntryForm({ ...entryForm, day_of_week: e.target.value })}>
                 {DAYS.map((d, i) => <option key={i} value={i}>{d}</option>)}
@@ -445,7 +446,7 @@ export default function Fitness() {
                   </span>
                   {ex.notes && <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", maxWidth: "40%", textAlign: "right" }}>{ex.notes}</span>}
                 </div>
-                <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", paddingLeft: "2.75rem" }}>
+                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", paddingLeft: "0" }}>
                   {ex.sets != null && <Badge label="Sets" value={`${ex.sets}`} />}
                   {ex.reps != null && <Badge label="Reps" value={`${ex.reps}`} />}
                   {ex.weight != null && <Badge label="Weight" value={`${ex.weight} kg`} />}
@@ -471,12 +472,12 @@ function GoalCard({ goal, active, onSelect, onEdit, onDelete }: { goal: Goal; ac
       border: active ? "1px solid var(--primary)" : "1px solid var(--border)",
       borderRadius: 12, padding: "1rem 1.25rem", cursor: "pointer", transition: "all 0.12s",
     }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div>
-          <div style={{ fontSize: "1.05rem", fontWeight: 600 }}>{goal.title}</div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "0.5rem" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: "1.05rem", fontWeight: 600, overflowWrap: "break-word" }}>{goal.title}</div>
           {goal.description && <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: "0.2rem" }}>{goal.description}</div>}
         </div>
-        <div style={{ display: "flex", gap: "0.35rem" }}>
+        <div style={{ display: "flex", gap: "0.35rem", flexShrink: 0 }}>
           <button onClick={e => { e.stopPropagation(); onEdit(); }} style={s.btnSmall}>Edit</button>
           <button onClick={e => { e.stopPropagation(); onDelete(); }} style={{ ...s.btnSmall, color: "#ef4444" }}>Delete</button>
         </div>
@@ -518,20 +519,20 @@ function WeekCalendar({ weekLabel, entries, onToggle, onDelete, onOpenWorkout }:
             const done = e.completed;
             return (
               <div key={e.id} onClick={() => onOpenWorkout(e)}
-                style={{ background: done ? "var(--primary)" : "var(--bg)", borderRadius: 6, padding: "0.25rem 0.5rem", fontSize: "0.78rem", display: "flex", alignItems: "center", gap: "0.35rem", cursor: "pointer", opacity: done ? 0.7 : 1, textDecoration: done ? "line-through" : "none" }}>
-                <input type="checkbox" checked={done} onChange={() => onToggle(e)} onClick={e => e.stopPropagation()} style={{ accentColor: "var(--primary)", cursor: "pointer" }} />
-                <span style={{ flex: 1 }}>{e.activity}{e.duration_minutes ? ` (${e.duration_minutes}m)` : ""}{e.frequency_hint ? ` · ${e.frequency_hint}` : ""}</span>
+                style={{ background: done ? "var(--primary)" : "var(--bg)", borderRadius: 6, padding: "0.25rem 0.5rem", fontSize: "0.78rem", display: "flex", alignItems: "center", gap: "0.35rem", cursor: "pointer", opacity: done ? 0.7 : 1, textDecoration: done ? "line-through" : "none", maxWidth: "100%", overflow: "hidden" }}>
+                <input type="checkbox" checked={done} onChange={() => onToggle(e)} onClick={e => e.stopPropagation()} style={{ accentColor: "var(--primary)", cursor: "pointer", flexShrink: 0 }} />
+                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.activity}{e.duration_minutes ? ` (${e.duration_minutes}m)` : ""}{e.frequency_hint ? ` · ${e.frequency_hint}` : ""}</span>
                 <button onClick={ev => { ev.stopPropagation(); onDelete(e.id); }} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "0.75rem", padding: 0, lineHeight: 1, flexShrink: 0 }}>✕</button>
               </div>
             );
           })}
         </div>
       )}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: "4px" }}>
+      <div className="calendar-grid">
         {DAYS.map((day, idx) => {
           const dayEntries = fixed.filter(e => e.day_of_week === idx);
           return (
-            <div key={day} style={{ background: "var(--bg)", borderRadius: 8, padding: "0.45rem", minHeight: 80 }}>
+            <div key={day} className="calendar-day" style={{ background: "var(--bg)", borderRadius: 8, padding: "0.45rem" }}>
               <div style={{ fontSize: "0.68rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "0.25rem" }}>{day}</div>
               {dayEntries.map(e => {
                 const done = e.completed;
@@ -555,7 +556,7 @@ function WeekCalendar({ weekLabel, entries, onToggle, onDelete, onOpenWorkout }:
 function Overlay({ children, onClose, wide }: { children: React.ReactNode; onClose: () => void; wide?: boolean }) {
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: "1rem" }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: "1.5rem", width: "100%", maxWidth: wide ? 640 : 500, maxHeight: "90vh", overflowY: "auto" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: "1.5rem", width: "100%", maxWidth: wide ? 640 : 500, maxHeight: "90vh", overflowY: "auto", margin: "auto" }}>
         {children}
       </div>
     </div>
@@ -579,5 +580,5 @@ const s = {
   link: { background: "none", border: "none", color: "var(--primary)", cursor: "pointer", fontSize: "0.9rem", padding: 0, marginBottom: "1.5rem" } as React.CSSProperties,
   input: { background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8, padding: "0.55rem 0.75rem", color: "var(--text)", fontSize: "0.85rem", width: "100%", marginTop: "0.25rem" } as React.CSSProperties,
   label: { fontSize: "0.82rem", color: "var(--text-muted)", display: "flex", flexDirection: "column" } as React.CSSProperties,
-  grid2: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" } as React.CSSProperties,
+  // grid2 removed — use className="responsive-grid-2"
 };

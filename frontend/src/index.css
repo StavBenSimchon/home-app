@@ -42,3 +42,65 @@ input:focus, select:focus, button:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
+
+.responsive-container {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+.responsive-flex {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+}
+
+.responsive-flex .grow { flex: 1; }
+
+.responsive-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.calendar-day {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+@media (max-width: 640px) {
+  .responsive-container {
+    padding: 1.5rem 0.75rem;
+  }
+
+  .responsive-flex {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .responsive-flex .grow {
+    width: 100%;
+  }
+
+  .responsive-grid-2 {
+    grid-template-columns: 1fr;
+  }
+
+  .calendar-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .calendar-day {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.5rem;
+  }
+}
