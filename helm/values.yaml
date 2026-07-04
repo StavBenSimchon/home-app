@@ -1,6 +1,5 @@
 # -- Global settings
-global:
-  imageRegistry: ghcr.io
+global: {}
 
 # -- Docker image settings
 image:
