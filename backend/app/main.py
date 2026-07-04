@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import init_db
-from app.routers import ai, goals, plans, exercises
+from app.routers import api_router
 
 
 @asynccontextmanager
@@ -24,10 +24,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(goals.router)
-app.include_router(plans.router)
-app.include_router(exercises.router)
-app.include_router(ai.router)
+app.include_router(api_router)
 
 
 @app.get("/")
