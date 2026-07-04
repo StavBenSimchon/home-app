@@ -1,0 +1,83 @@
+name: Cleanup Container Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: "Comma-separated package names (e.g. home-app/backend,home-app/frontend)"
+        required: true
+        default: "home-app/backend,home-app/frontend"
+      keep:
+        description: "Number of non-versioned images to keep"
+        required: false
+        default: "3"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cleanup old container images
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+          KEEP: ${{ github.event.inputs.keep || 3 }}
+        run: |
+          IFS=',' read -ra PACKAGES <<< "${{ github.event.inputs.packages }}"
+
+          for PKG in "${PACKAGES[@]}"; do
+            PKG="$(echo "$PKG" | xargs)"
+            # URL-encode slashes in the package name
+            ENCODED="$(echo "$PKG" | sed 's|/|%2F|g')"
+            echo "=== $PKG ==="
+
+            gh api --paginate "/users/$OWNER/packages/container/$ENCODED/versions" \
+              --jq '.[] | {id, tags: .metadata.container.tags, created_at}' > /tmp/versions.json
+
+            KEEP_IDS=()
+            DELETE_IDS=()
+
+            while IFS= read -r line; do
+              [ -z "$line" ] && continue
+              ID="$(echo "$line" | jq -r '.id')"
+              TAGS="$(echo "$line" | jq -r '.tags | if length == 0 then empty else join(",") end')"
+
+              if [ -z "$TAGS" ]; then
+                DELETE_IDS+=("$ID")
+              elif echo "$TAGS" | tr ',' '\n' | grep -qE '^v'; then
+                KEEP_IDS+=("$ID")
+              else
+                echo "$line" >> /tmp/nonver.json
+              fi
+            done < /tmp/versions.json
+
+            if [ -f /tmp/nonver.json ]; then
+              # Slurp into array, sort by created_at descending
+              jq -s 'sort_by(.created_at) | reverse | .[]' /tmp/nonver.json > /tmp/sorted.json
+              COUNT=0
+              while IFS= read -r line; do
+                ID="$(echo "$line" | jq -r '.id')"
+                if [ "$COUNT" -lt "$KEEP" ]; then
+                  KEEP_IDS+=("$ID")
+                else
+                  DELETE_IDS+=("$ID")
+                fi
+                COUNT=$((COUNT + 1))
+              done < /tmp/sorted.json
+              rm -f /tmp/nonver.json /tmp/sorted.json
+            fi
+
+            echo "  Keeping: ${#KEEP_IDS[@]} images"
+            echo "  Deleting: ${#DELETE_IDS[@]} images"
+
+            for ID in "${DELETE_IDS[@]}"; do
+              echo "  Deleting version $ID"
+              gh api --method DELETE "/users/$OWNER/packages/container/$ENCODED/versions/$ID" \
+                --silent || echo "  Failed to delete $ID (may already be gone)"
+            done
+
+            echo ""
+          done
