@@ -20,6 +20,9 @@ jobs:
 
       - uses: azure/setup-helm@v4
 
+      - name: Lowercase owner
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+
       - name: Login to GHCR
         run: helm registry login ghcr.io --username ${{ github.actor }} --password ${{ secrets.GITHUB_TOKEN }}
 
@@ -28,4 +31,4 @@ jobs:
           helm dependency update helm
           version="$(grep '^version:' helm/Chart.yaml | awk '{print $2}')"
           helm package helm -d /tmp/charts
-          helm push "/tmp/charts/home-app-${version}.tgz" "oci://ghcr.io/${{ github.repository_owner }}"
+          helm push "/tmp/charts/home-app-${version}.tgz" "oci://ghcr.io/${{ env.owner }}"
