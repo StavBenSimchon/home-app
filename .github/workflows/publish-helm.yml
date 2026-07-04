@@ -1,0 +1,30 @@
+name: Publish Helm chart
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "helm/**"
+      - ".github/workflows/publish-helm.yml"
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+
+      - name: Login to GHCR
+        run: helm registry login ghcr.io --username ${{ github.actor }} --password ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Package and push
+        run: |
+          version="$(grep '^version:' helm/Chart.yaml | awk '{print $2}')"
+          helm package helm -d /tmp/charts
+          helm push "/tmp/charts/home-app-${version}.tgz" "oci://ghcr.io/${{ github.repository }}"
