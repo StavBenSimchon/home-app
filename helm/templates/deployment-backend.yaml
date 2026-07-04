@@ -28,10 +28,19 @@ spec:
             - name: DEBUG
               value: {{ .Values.backend.env.DEBUG | quote }}
             - name: AI_API_KEY
-              value: {{ .Values.backend.env.AI_API_KEY | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.backend.api_secret_name }}
+                  key: AI_API_KEY
             - name: AI_MODEL
-              value: {{ .Values.backend.env.AI_MODEL | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.backend.api_secret_name }}
+                  key: AI_MODEL
             - name: AI_BASE_URL
-              value: {{ .Values.backend.env.AI_BASE_URL | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.backend.api_secret_name }}
+                  key: AI_BASE_URL
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
