@@ -16,128 +16,138 @@ permissions:
   contents: read
   packages: write
 
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 jobs:
   cleanup:
     runs-on: ubuntu-latest
     steps:
       - name: Cleanup old container images
         run: |
-          # Install jq if not present
-          if ! command -v jq &> /dev/null; then
-            sudo apt-get update && sudo apt-get install -y jq > /dev/null
-          fi
-
           echo "Starting cleanup for GitHub Packages container images..."
-          echo "Repository: github.com/stavbensimchon/home-app"
           echo "Owner: ${{ github.repository_owner }}"
-
+          echo "Packages to process: ${{ github.event.inputs.packages }}"
+          echo "Versions to keep per package: ${{ github.event.inputs.keep || 3 }}"
+          
           IFS=',' read -ra PACKAGES <<< "${{ github.event.inputs.packages }}"
           KEEP="${{ github.event.inputs.keep || 3 }}"
 
-          total_kept=0
-          total_deleted=0
+          echo ""
 
           for PKG in "${PACKAGES[@]}"; do
             PKG="$(echo "$PKG" | xargs)"
-            echo "\n=== Processing package: $PKG ==="
+            echo "=== Processing package: $PKG ==="
             ENCODED="$(echo "$PKG" | sed 's|/|%2F|g')"
-
-            echo "  Fetching versions from GitHub API..."
             
-            # Use curl to get the versions
-            if ! curl -s -L -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                -H "Accept: application/vnd.github.v3+json" \
-                "https://api.github.com/users/${{ github.repository_owner }}/packages/container/$ENCODED/versions?per_page=100" \
-                > /tmp/versions.json; then
-              echo "  ERROR: Failed to fetch versions"
-              echo "  Response preview:"
-              cat /tmp/versions.json | head -20 2>/dev/null || echo "  No response data"
-              continue
-            fi
-
-            # Check if the response is empty
-            if [[ ! -s /tmp/versions.json ]]; then
-              echo "  WARNING: Empty response. Package may not exist or you don't have permission."
-              continue
-            fi
-
-            # Check if response is JSON (not HTML)
-            if head -n 1 /tmp/versions.json | grep -qi "<!doctype html>"; then
-              echo "  ERROR: API returned HTML (likely not JSON)"
-              echo "  Response preview:"
-              head -c 500 /tmp/versions.json
-              continue
-            fi
-
-            echo "  Parsing JSON response..."
+            echo "Encoded package name: $ENCODED"
             
-            # Use jq to extract the needed fields
-            jq -c '.[] | {id, tags: .metadata.container.tags, created_at}' /tmp/versions.json > /tmp/versions_parsed.json 2>/dev/null
+            # Get versions from GitHub API
+            echo "Fetching versions..."
+            VERSIONS_URL="https://api.github.com/users/${{ github.repository_owner }}/packages/container/$ENCODED/versions"
+            echo "API URL: $VERSIONS_URL"
             
-            if [[ $? -ne 0 ]]; then
-              echo "  ERROR: Failed to parse JSON with jq"
-              echo "  Sample of response:"
-              head -c 500 /tmp/versions.json
+            # Use curl to fetch with proper authentication and headers
+            curl_output=$(curl -s -w "%{http_code}" -H "Authorization: token $GITHUB_TOKEN" \
+                            -H "Accept: application/vnd.github.v3+json" \
+                            "$VERSIONS_URL" 2>&1)
+            
+            # Extract HTTP status and response body
+            HTTP_STATUS="${curl_output%%\*<}"             # Status code before <
+            RESPONSE_BODY="${curl_output#*<}"           # Body after <
+            
+            echo "HTTP Status: $HTTP_STATUS"
+            echo "Response length: ${#RESPONSE_BODY} characters"
+            
+            # Check for errors
+            if [[ "$HTTP_STATUS" != "200" ]]; then
+              echo "ERROR: API returned HTTP $HTTP_STATUS"
+              echo "Response: $RESPONSE_BODY"
               continue
             fi
-
-            TOTAL_VERSIONS=$(wc -l < /tmp/versions_parsed.json 2>/dev/null || echo 0)
-            echo "  Total versions found: $TOTAL_VERSIONS"
-
+            
+            if [[ -z "$RESPONSE_BODY" ]]; then
+              echo "ERROR: Empty response from API"
+              continue
+            fi
+            
+            # Check if response looks like JSON (starts with { or [)
+            FIRST_CHAR="$(echo "$RESPONSE_BODY" | head -c 1)"
+            if [[ "$FIRST_CHAR" != "{" && "$FIRST_CHAR" != "[" ]]; then
+              echo "ERROR: Response is not valid JSON (starts with: '$FIRST_CHAR')"
+              echo "First 200 chars of response: $RESPONSE_BODY | head -c 200"
+              continue
+            fi
+            
+            echo "Response appears to be valid JSON"
+            
+            # Convert JSON to line-delimited format
+            echo "Parsing JSON..."
+            echo "$RESPONSE_BODY" | jq -c '.[] | {id, tags: .metadata.container.tags, created_at}' > /tmp/versions.json 2>/dev/null || {
+              echo "ERROR: Failed to parse JSON"
+              echo "Sample response (first 500 chars): $RESPONSE_BODY | head -c 500"
+              continue
+            }
+            
+            TOTAL=$(wc -l < /tmp/versions.json || echo 0)
+            echo "Total versions found: $TOTAL"
+            
             KEEP_IDS=()
             DELETE_IDS=()
             TEMP_NONVER="/tmp/nonver.json"
-
-            echo "  Processing versions..."
+            
+            echo "Categorizing versions..."
             while IFS= read -r line; do
-              [ -z "$line" ] && continue
+              [[ -z "$line" ]] && continue
 
               ID="$(echo "$line" | jq -r '.id')"
               TAGS="$(echo "$line" | jq -r '.tags | if length == 0 then empty else join(",") end')"
 
-              if [ -z "$TAGS" ]; then
+              if [[ -z "$TAGS" ]]; then
+                echo "  Untagged version will be deleted: $ID"
                 DELETE_IDS+=("$ID")
-                echo "    Untagged version will be deleted: $ID"
               elif echo "$TAGS" | tr ',' '\n' | grep -qE '^v'; then
+                echo "  Versioned (v*) version will be kept: $ID"
                 KEEP_IDS+=("$ID")
-                echo "    Versioned (v*) will be kept: $ID"
               else
+                echo "  Non-versioned version will be kept if in top $KEEP: $ID"
                 echo "$line" >> "$TEMP_NONVER"
               fi
-            done < /tmp/versions_parsed.json
-
-            if [ -f "$TEMP_NONVER" ]; then
+            done < /tmp/versions.json
+            
+            if [[ -f "$TEMP_NONVER" ]]; then
+              echo "Sorting non-versioned versions by creation date..."
               jq -s 'sort_by(.created_at) | reverse | .[]' "$TEMP_NONVER" > /tmp/sorted.json
+              
               COUNT=0
               while IFS= read -r line; do
                 ID="$(echo "$line" | jq -r '.id')"
-                if [ $COUNT -lt $KEEP ]; then
+                if [[ $COUNT -lt $KEEP ]]; then
+                  echo "  Keeping (in top $KEEP): $ID"
                   KEEP_IDS+=("$ID")
                 else
+                  echo "  Deleting (beyond limit): $ID"
                   DELETE_IDS+=("$ID")
                 fi
                 COUNT=$((COUNT + 1))
               done < /tmp/sorted.json
             fi
 
-            echo "  Versions to keep: ${#KEEP_IDS[@]}"
-            echo "  Versions to delete: ${#DELETE_IDS[@]}"
-
+            echo ""
+            echo "Summary for $PKG:"
+            echo "  Keeping: ${#KEEP_IDS[@]} versions"
+            echo "  Deleting: ${#DELETE_IDS[@]} versions"
+            
             for ID in "${DELETE_IDS[@]}"; do
-              echo "    Deleting version $ID"
-              if curl -s -X DELETE -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              echo "  Deleting version $ID..."
+              if curl -s -f -X DELETE -H "Authorization: token $GITHUB_TOKEN" \
                    -H "Accept: application/vnd.github.v3+json" \
                    "https://api.github.com/users/${{ github.repository_owner }}/packages/container/$ENCODED/versions/$ID"; then
-                echo "    ✓ Successfully deleted version $ID"
-                total_deleted=$((total_deleted + 1))
+                echo "  ✓ Successfully deleted version $ID"
               else
-                echo "    ✗ Failed to delete version $ID"
+                echo "  ✗ Failed to delete version $ID"
               fi
             done
-
-            total_kept=$((total_kept + ${#KEEP_IDS[@]}))
+            
+            echo ""
           done
-
-          echo "\n=== Summary ==="
-          echo "Total versions kept: $total_kept"
-          echo "Total versions deleted: $total_deleted"
