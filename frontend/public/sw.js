@@ -29,6 +29,8 @@ self.addEventListener("fetch", (event) => {
 
   if (url.pathname.startsWith("/api/")) {
     event.respondWith(networkFirst(request));
+  } else if (request.mode === "navigate") {
+    event.respondWith(networkFirst(request));
   } else {
     event.respondWith(cacheFirst(request));
   }
