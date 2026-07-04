@@ -8,7 +8,7 @@ const SPINNER = (
   </svg>
 );
 
-const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 // ---------- chat state machine ----------
 type ChatStep = "idle" | "input" | "questions" | "generating" | "done";
@@ -530,7 +530,7 @@ function WeekCalendar({ weekLabel, entries, onToggle, onDelete, onOpenWorkout }:
       )}
       <div className="calendar-grid">
         {DAYS.map((day, idx) => {
-          const dayEntries = fixed.filter(e => e.day_of_week === idx);
+          const dayEntries = fixed.filter(e => e.day_of_week === (idx + 6) % 7);
           return (
             <div key={day} className="calendar-day" style={{ background: "var(--bg)", borderRadius: 8, padding: "0.45rem" }}>
               <div style={{ fontSize: "0.68rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "0.25rem" }}>{day}</div>
