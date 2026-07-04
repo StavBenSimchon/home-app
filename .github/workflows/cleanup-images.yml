@@ -30,15 +30,26 @@ jobs:
 
           for PKG in "${PACKAGES[@]}"; do
             PKG="$(echo "$PKG" | xargs)"
-            # URL-encode slashes in the package name
             ENCODED="$(echo "$PKG" | sed 's|/|%2F|g')"
             echo "=== $PKG ==="
 
-            gh api --paginate "/users/$OWNER/packages/container/$ENCODED/versions" \
-              --jq '.[] | {id, tags: .metadata.container.tags, created_at}' > /tmp/versions.json
+            # Fetch all versions
+            if ! gh api --paginate "/users/$OWNER/packages/container/$ENCODED/versions?per_page=100" 2>/dev/null > /tmp/raw.json; then
+              echo "  Failed to fetch versions"
+              continue
+            fi
+
+            # Parse: one JSON object per line with id, tags, created_at
+            if ! jq -c '.[] | {id, tags: .metadata.container.tags, created_at}' /tmp/raw.json 2>/dev/null > /tmp/versions.json; then
+              echo "  No versions found or parse error — raw output:"
+              head -c 500 /tmp/raw.json
+              echo ""
+              continue
+            fi
 
             KEEP_IDS=()
             DELETE_IDS=()
+            rm -f /tmp/nonver.json
 
             while IFS= read -r line; do
               [ -z "$line" ] && continue
@@ -55,7 +66,6 @@ jobs:
             done < /tmp/versions.json
 
             if [ -f /tmp/nonver.json ]; then
-              # Slurp into array, sort by created_at descending
               jq -s 'sort_by(.created_at) | reverse | .[]' /tmp/nonver.json > /tmp/sorted.json
               COUNT=0
               while IFS= read -r line; do
@@ -67,7 +77,6 @@ jobs:
                 fi
                 COUNT=$((COUNT + 1))
               done < /tmp/sorted.json
-              rm -f /tmp/nonver.json /tmp/sorted.json
             fi
 
             echo "  Keeping: ${#KEEP_IDS[@]} images"
@@ -75,8 +84,9 @@ jobs:
 
             for ID in "${DELETE_IDS[@]}"; do
               echo "  Deleting version $ID"
-              gh api --method DELETE "/users/$OWNER/packages/container/$ENCODED/versions/$ID" \
-                --silent || echo "  Failed to delete $ID (may already be gone)"
+              if ! gh api --method DELETE "/users/$OWNER/packages/container/$ENCODED/versions/$ID" --silent 2>/dev/null; then
+                echo "  Failed to delete $ID"
+              fi
             done
 
             echo ""
