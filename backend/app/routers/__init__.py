@@ -2,7 +2,7 @@ from fastapi import APIRouter
 
 from app.routers import ai, goals, plans, exercises, weight
 
-api_router = APIRouter()
+api_router = APIRouter(prefix="/api")
 api_router.include_router(goals.router)
 api_router.include_router(plans.router)
 api_router.include_router(exercises.router)
