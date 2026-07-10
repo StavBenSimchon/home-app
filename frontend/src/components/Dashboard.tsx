@@ -7,6 +7,12 @@ const apps = [
     icon: "🏋️",
     path: "/fitness",
   },
+  {
+    title: "Settle Up",
+    description: "Split expenses and settle debts",
+    icon: "💰",
+    path: "/settle-up",
+  },
 ];
 
 export default function Dashboard() {
