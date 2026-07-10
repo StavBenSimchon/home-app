@@ -10,6 +10,7 @@ const SPINNER = (
 );
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const TODAY_DOW = new Date().getDay();
 
 // ---------- chat state machine ----------
 type ChatStep = "idle" | "input" | "questions" | "generating" | "done";
@@ -392,8 +393,37 @@ export default function Fitness() {
       )}
 
       {/* ---------- Calendar ---------- */}
-      {selectedGoal && (
-        <section>
+      {selectedGoal && (() => {
+        const todayEntries = entries.filter(e => e.day_of_week === TODAY_DOW && !e.completed);
+        const todayDone = entries.filter(e => e.day_of_week === TODAY_DOW && e.completed);
+        const todayTotal = entries.filter(e => e.day_of_week === TODAY_DOW);
+        return (
+          <>
+            {/* Today's Workout */}
+            {todayTotal.length > 0 && (
+              <div style={{ ...s.card, marginBottom: "1rem", borderLeft: "3px solid var(--primary)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+                  <span style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--primary)", textTransform: "uppercase" }}>Today</span>
+                  <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{todayDone.length}/{todayTotal.length} done</span>
+                </div>
+                {todayEntries.length === 0 ? (
+                  <p style={{ fontSize: "0.85rem", color: "#22c55e", fontWeight: 500 }}>All done for today!</p>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+                    {todayEntries.map(e => (
+                      <div key={e.id} onClick={() => openWorkout(e)}
+                        style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.4rem 0.6rem", background: "var(--bg)", borderRadius: 8, cursor: "pointer", transition: "background 0.15s" }}>
+                        <input type="checkbox" checked={false} onChange={() => toggleCompleted(e)} onClick={ev => ev.stopPropagation()} style={{ accentColor: "var(--primary)", cursor: "pointer", flexShrink: 0 }} />
+                        <span style={{ fontSize: "0.85rem", fontWeight: 500, flex: 1 }}>{e.activity}</span>
+                        {e.duration_minutes && <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{e.duration_minutes}m</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <section>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
             <h2 style={{ fontSize: "1.25rem", fontWeight: 600 }}>Plan: {selectedGoal.title}</h2>
             <button onClick={() => setShowEntryForm(true)} style={s.btnSecondary}>+ Add Activity</button>
@@ -407,7 +437,9 @@ export default function Fitness() {
               onOpenWorkout={openWorkout} />
           ))}
         </section>
-      )}
+          </>
+        );
+      })()}
 
       {/* ---------- Entry form ---------- */}
       {showEntryForm && (
@@ -450,27 +482,42 @@ export default function Fitness() {
             <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", textAlign: "center", padding: "2rem 0" }}>No exercises listed for this activity.</p>
           )}
 
+          {workoutExercises.length > 0 && (() => {
+            const exDone = workoutExercises.filter(e => e.completed).length;
+            const exTotal = workoutExercises.length;
+            return (
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem", padding: "0.6rem 0.75rem", background: "var(--bg)", borderRadius: 8 }}>
+                <div style={{ flex: 1, height: 6, background: "var(--surface)", borderRadius: 3, overflow: "hidden" }}>
+                  <div style={{ width: `${(exDone / exTotal) * 100}%`, height: "100%", background: exDone === exTotal ? "#22c55e" : "var(--primary)", borderRadius: 3, transition: "width 0.3s" }} />
+                </div>
+                <span style={{ fontSize: "0.8rem", fontWeight: 600, color: exDone === exTotal ? "#22c55e" : "var(--text-muted)", whiteSpace: "nowrap" }}>{exDone}/{exTotal}</span>
+              </div>
+            );
+          })()}
+
           <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
             {workoutExercises.map((ex, i) => (
-              <div key={ex.id} style={{
-                display: "flex", flexDirection: "column", gap: "0.4rem", padding: "0.75rem 1rem",
-                background: "var(--bg)", borderRadius: 10, border: ex.completed ? "1px solid var(--primary)" : "1px solid transparent",
-                opacity: ex.completed ? 0.6 : 1,
+              <div key={ex.id} onClick={() => toggleExercise(ex)} style={{
+                display: "flex", flexDirection: "column", gap: "0.4rem", padding: "0.75rem 1rem", cursor: "pointer",
+                background: ex.completed ? "var(--surface)" : "var(--bg)", borderRadius: 10,
+                border: ex.completed ? "1px solid var(--primary)" : "1px solid transparent",
+                opacity: ex.completed ? 0.6 : 1, transition: "all 0.2s",
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                  <input type="checkbox" checked={ex.completed} onChange={() => toggleExercise(ex)}
-                    style={{ width: 20, height: 20, accentColor: "var(--primary)", cursor: "pointer", flexShrink: 0 }} />
+                  <div style={{ width: 22, height: 22, borderRadius: "50%", border: ex.completed ? "2px solid var(--primary)" : "2px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, background: ex.completed ? "var(--primary)" : "transparent" }}>
+                    {ex.completed && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3"><path d="M20 6L9 17l-5-5" /></svg>}
+                  </div>
                   <span style={{ fontWeight: 600, fontSize: "0.95rem", flex: 1, textDecoration: ex.completed ? "line-through" : "none" }}>
                     {i + 1}. {ex.name}
                   </span>
-                  {ex.notes && <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", maxWidth: "40%", textAlign: "right" }}>{ex.notes}</span>}
                 </div>
-                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", paddingLeft: "0" }}>
+                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", paddingLeft: "2.25rem" }}>
                   {ex.sets != null && <Badge label="Sets" value={`${ex.sets}`} />}
                   {ex.reps != null && <Badge label="Reps" value={`${ex.reps}`} />}
                   {ex.weight != null && <Badge label="Weight" value={`${ex.weight} kg`} />}
                   {ex.duration_seconds != null && <Badge label="Duration" value={`${ex.duration_seconds}s`} />}
                 </div>
+                {ex.notes && <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", paddingLeft: "2.25rem", marginTop: "-0.2rem" }}>{ex.notes}</div>}
               </div>
             ))}
           </div>
@@ -540,10 +587,23 @@ function WeekCalendar({ weekLabel, entries, onToggle, onDelete, onOpenWorkout }:
 }) {
   const flexible = entries.filter(e => e.day_of_week == null);
   const fixed = entries.filter(e => e.day_of_week != null);
+  const completed = entries.filter(e => e.completed).length;
+  const total = entries.length;
+  const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
 
   return (
     <div style={{ ...s.card, marginBottom: "0.75rem" }}>
-      <h3 style={{ fontSize: "0.95rem", fontWeight: 600, marginBottom: "0.5rem" }}>{weekLabel}</h3>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+        <h3 style={{ fontSize: "0.95rem", fontWeight: 600 }}>{weekLabel}</h3>
+        {total > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>{completed}/{total}</span>
+            <div style={{ width: 60, height: 5, background: "var(--bg)", borderRadius: 3, overflow: "hidden" }}>
+              <div style={{ width: `${pct}%`, height: "100%", background: pct === 100 ? "#22c55e" : "var(--primary)", borderRadius: 3, transition: "width 0.3s" }} />
+            </div>
+          </div>
+        )}
+      </div>
       {flexible.length > 0 && (
         <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.5rem" }}>
           {flexible.map(e => {
@@ -561,10 +621,21 @@ function WeekCalendar({ weekLabel, entries, onToggle, onDelete, onOpenWorkout }:
       )}
       <div className="calendar-grid">
         {DAYS.map((day, idx) => {
-          const dayEntries = fixed.filter(e => e.day_of_week === (idx + 6) % 7);
+          const dayNum = (idx + 6) % 7;
+          const dayEntries = fixed.filter(e => e.day_of_week === dayNum);
+          const isToday = dayNum === TODAY_DOW;
+          const dayDone = dayEntries.filter(e => e.completed).length;
           return (
-            <div key={day} className="calendar-day" style={{ background: "var(--bg)", borderRadius: 8, padding: "0.45rem" }}>
-              <div style={{ fontSize: "0.68rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: "0.25rem" }}>{day}</div>
+            <div key={day} className="calendar-day" style={{
+              background: "var(--bg)", borderRadius: 8, padding: "0.45rem",
+              border: isToday ? "1.5px solid var(--primary)" : "1.5px solid transparent",
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.25rem" }}>
+                <div style={{ fontSize: "0.68rem", fontWeight: 600, color: isToday ? "var(--primary)" : "var(--text-muted)", textTransform: "uppercase" }}>{day}</div>
+                {dayEntries.length > 0 && dayDone === dayEntries.length && (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3"><path d="M20 6L9 17l-5-5" /></svg>
+                )}
+              </div>
               {dayEntries.map(e => {
                 const done = e.completed;
                 return (
