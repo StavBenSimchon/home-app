@@ -127,10 +127,13 @@ export default function WeightTracker() {
               <path key={line.key} d={line.data.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ")} fill="none" stroke={line.color} strokeWidth="2" strokeLinejoin="round" />
             ))}
             {graphData.lines.map(line => line.data.map((p, i) => (
-              <circle key={`${line.key}-${i}`} cx={p.x} cy={p.y} r="4" fill={line.color}
-                style={{ cursor: "pointer" }}
-                onMouseEnter={() => setHovered({ lineKey: line.key, index: i, x: p.x, y: p.y })}
-                onMouseLeave={() => setHovered(null)} />
+              <g key={`${line.key}-${i}`}>
+                <circle cx={p.x} cy={p.y} r="10" fill="transparent"
+                  style={{ cursor: "pointer" }}
+                  onMouseEnter={() => setHovered({ lineKey: line.key, index: i, x: p.x, y: p.y })}
+                  onMouseLeave={() => setHovered(null)} />
+                <circle cx={p.x} cy={p.y} r="3" fill={line.color} pointerEvents="none" />
+              </g>
             )))}
             {hovered && (() => {
               const entry = sorted[hovered.index];
@@ -142,7 +145,7 @@ export default function WeightTracker() {
               const tx = Math.min(hovered.x + 8, graphData.W - 90);
               const ty = Math.max(hovered.y - 35, 5);
               return (
-                <g>
+                <g pointerEvents="none">
                   <rect x={tx - 4} y={ty - 2} width="86" height="38" rx="6" fill="var(--surface)" stroke="var(--border)" strokeWidth="1" />
                   <text x={tx} y={ty + 12} fontSize="10" fill={line.color} fontWeight="600">{line.label}: {val}kg</text>
                   <text x={tx} y={ty + 26} fontSize="9" fill="var(--text-muted)">{entry.measured_at} · {pct}%</text>
