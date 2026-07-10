@@ -11,7 +11,8 @@ const SPINNER = (
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const TODAY_DOW = new Date().getDay();
-const TODAY_STR = new Date().toISOString().split("T")[0];
+const _now = new Date();
+const TODAY_STR = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, "0")}-${String(_now.getDate()).padStart(2, "0")}`;
 
 function getCurrentWeek(startDate: string | null): number {
   if (!startDate) return 1;
@@ -664,7 +665,9 @@ function WeekCalendar({ weekLabel, weekNum, goalStartDate, entries, onToggle, on
             ? new Date(new Date(goalStartDate).getTime() + ((weekNum - 1) * 7 + idx) * 86400000)
             : null;
           const dateStr = cellDate ? `${cellDate.getDate()}/${cellDate.getMonth() + 1}` : "";
-          const isToday = cellDate ? cellDate.toISOString().split("T")[0] === TODAY_STR : false;
+          const isToday = cellDate
+            ? `${cellDate.getFullYear()}-${String(cellDate.getMonth() + 1).padStart(2, "0")}-${String(cellDate.getDate()).padStart(2, "0")}` === TODAY_STR
+            : false;
           return (
             <div key={day} className="calendar-day" style={{
               background: isToday ? "color-mix(in srgb, var(--primary) 10%, var(--bg))" : "var(--bg)",
