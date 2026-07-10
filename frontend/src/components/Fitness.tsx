@@ -11,6 +11,15 @@ const SPINNER = (
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const TODAY_DOW = new Date().getDay();
+const TODAY_STR = new Date().toISOString().split("T")[0];
+
+function getCurrentWeek(startDate: string | null): number {
+  if (!startDate) return 1;
+  const start = new Date(startDate);
+  const now = new Date();
+  const diff = Math.floor((now.getTime() - start.getTime()) / 86400000);
+  return Math.max(1, Math.floor(diff / 7) + 1);
+}
 
 // ---------- chat state machine ----------
 type ChatStep = "idle" | "input" | "questions" | "generating" | "done";
@@ -394,28 +403,37 @@ export default function Fitness() {
 
       {/* ---------- Calendar ---------- */}
       {selectedGoal && (() => {
-        const todayEntries = entries.filter(e => e.day_of_week === TODAY_DOW && !e.completed);
-        const todayDone = entries.filter(e => e.day_of_week === TODAY_DOW && e.completed);
-        const todayTotal = entries.filter(e => e.day_of_week === TODAY_DOW);
+        const currentWeek = getCurrentWeek(selectedGoal.start_date);
+        const todayEntries = entries.filter(e => e.day_of_week === TODAY_DOW && e.week_number === currentWeek && !e.completed);
+        const todayDone = entries.filter(e => e.day_of_week === TODAY_DOW && e.week_number === currentWeek && e.completed);
+        const todayTotal = entries.filter(e => e.day_of_week === TODAY_DOW && e.week_number === currentWeek);
         return (
           <>
             {/* Today's Workout */}
             {todayTotal.length > 0 && (
-              <div style={{ ...s.card, marginBottom: "1rem", borderLeft: "3px solid var(--primary)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
-                  <span style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--primary)", textTransform: "uppercase" }}>Today</span>
-                  <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{todayDone.length}/{todayTotal.length} done</span>
+              <div style={{ background: "linear-gradient(135deg, var(--primary), color-mix(in srgb, var(--primary) 80%, #000))", borderRadius: 16, padding: "1.25rem", marginBottom: "1.5rem", color: "#fff" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+                  <div>
+                    <div style={{ fontSize: "0.75rem", opacity: 0.8, textTransform: "uppercase", letterSpacing: "0.05em" }}>Today</div>
+                    <div style={{ fontSize: "1.15rem", fontWeight: 700 }}>{DAYS[TODAY_DOW]}, Week {currentWeek}</div>
+                  </div>
+                  <div style={{ fontSize: "2rem", fontWeight: 700 }}>{todayDone.length}/{todayTotal.length}</div>
                 </div>
                 {todayEntries.length === 0 ? (
-                  <p style={{ fontSize: "0.85rem", color: "#22c55e", fontWeight: 500 }}>All done for today!</p>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.6rem 0.8rem", background: "rgba(255,255,255,0.15)", borderRadius: 10, fontSize: "0.9rem", fontWeight: 500 }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5" /></svg>
+                    All done for today!
+                  </div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
                     {todayEntries.map(e => (
                       <div key={e.id} onClick={() => openWorkout(e)}
-                        style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.4rem 0.6rem", background: "var(--bg)", borderRadius: 8, cursor: "pointer", transition: "background 0.15s" }}>
-                        <input type="checkbox" checked={false} onChange={() => toggleCompleted(e)} onClick={ev => ev.stopPropagation()} style={{ accentColor: "var(--primary)", cursor: "pointer", flexShrink: 0 }} />
-                        <span style={{ fontSize: "0.85rem", fontWeight: 500, flex: 1 }}>{e.activity}</span>
-                        {e.duration_minutes && <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{e.duration_minutes}m</span>}
+                        style={{ display: "flex", alignItems: "center", gap: "0.6rem", padding: "0.55rem 0.75rem", background: "rgba(255,255,255,0.12)", borderRadius: 10, cursor: "pointer", transition: "background 0.15s", backdropFilter: "blur(4px)" }}>
+                        <div onClick={(ev) => { ev.stopPropagation(); toggleCompleted(e); }}
+                          style={{ width: 22, height: 22, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.5)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, cursor: "pointer", transition: "all 0.2s" }} />
+                        <span style={{ fontSize: "0.9rem", fontWeight: 500, flex: 1 }}>{e.activity}</span>
+                        {e.duration_minutes && <span style={{ fontSize: "0.78rem", opacity: 0.7 }}>{e.duration_minutes}m</span>}
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ opacity: 0.5 }}><path d="M9 18l6-6-6-6" /></svg>
                       </div>
                     ))}
                   </div>
@@ -424,9 +442,12 @@ export default function Fitness() {
             )}
 
             <section>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-            <h2 style={{ fontSize: "1.25rem", fontWeight: 600 }}>Plan: {selectedGoal.title}</h2>
-            <button onClick={() => setShowEntryForm(true)} style={s.btnSecondary}>+ Add Activity</button>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
+            <div>
+              <h2 style={{ fontSize: "1.35rem", fontWeight: 700 }}>Plan</h2>
+              <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginTop: "0.15rem" }}>{selectedGoal.title}</p>
+            </div>
+            <button onClick={() => setShowEntryForm(true)} style={{ ...s.btnPrimary, borderRadius: 10, padding: "0.5rem 1rem" }}>+ Add</button>
           </div>
 
           {Object.keys(byWeek).length === 0 && <p style={{ color: "var(--text-muted)", marginBottom: "1rem" }}>No activities planned yet.</p>}
@@ -465,17 +486,23 @@ export default function Fitness() {
       {/* ---------- Workout detail ---------- */}
       {workoutEntry && (
         <Overlay onClose={() => { setWorkoutEntry(null); setWorkoutExercises([]); }} wide>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1rem" }}>
-            <div>
-              <h2 style={{ fontSize: "1.3rem", fontWeight: 700 }}>{workoutEntry.activity}</h2>
-              {workoutEntry.duration_minutes && (
-                <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>{workoutEntry.duration_minutes} min</span>
-              )}
+          <div style={{ marginBottom: "1.25rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.5rem" }}>
+              <h2 style={{ fontSize: "1.4rem", fontWeight: 700 }}>{workoutEntry.activity}</h2>
+              <button onClick={() => { setWorkoutEntry(null); setWorkoutExercises([]); }}
+                style={{ background: "var(--bg)", border: "none", borderRadius: 8, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--text-muted)", flexShrink: 0 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
+              </button>
             </div>
-            <button onClick={() => { setWorkoutEntry(null); setWorkoutExercises([]); }} style={{ ...s.btnSmall, fontSize: "0.8rem" }}>Close</button>
+            {workoutEntry.duration_minutes && (
+              <div style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem", padding: "0.25rem 0.6rem", background: "var(--bg)", borderRadius: 6, fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>
+                {workoutEntry.duration_minutes} min
+              </div>
+            )}
           </div>
           {workoutEntry.notes && (
-            <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "1rem", lineHeight: 1.5 }}>{workoutEntry.notes}</p>
+            <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "1rem", lineHeight: 1.6, padding: "0.6rem 0.8rem", background: "var(--bg)", borderRadius: 8 }}>{workoutEntry.notes}</p>
           )}
 
           {workoutExercises.length === 0 && (
@@ -590,60 +617,74 @@ function WeekCalendar({ weekLabel, entries, onToggle, onDelete, onOpenWorkout }:
   const completed = entries.filter(e => e.completed).length;
   const total = entries.length;
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+  const isCurrentWeek = entries.some(e => e.week_number === getCurrentWeek(null));
 
   return (
-    <div style={{ ...s.card, marginBottom: "0.75rem" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
-        <h3 style={{ fontSize: "0.95rem", fontWeight: 600 }}>{weekLabel}</h3>
+    <div style={{ background: "var(--surface)", border: isCurrentWeek ? "1.5px solid var(--primary)" : "1px solid var(--border)", borderRadius: 14, padding: "1rem", marginBottom: "0.75rem" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <h3 style={{ fontSize: "0.95rem", fontWeight: 600 }}>{weekLabel}</h3>
+          {pct === 100 && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5"><path d="M20 6L9 17l-5-5" /></svg>}
+        </div>
         {total > 0 && (
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>{completed}/{total}</span>
-            <div style={{ width: 60, height: 5, background: "var(--bg)", borderRadius: 3, overflow: "hidden" }}>
-              <div style={{ width: `${pct}%`, height: "100%", background: pct === 100 ? "#22c55e" : "var(--primary)", borderRadius: 3, transition: "width 0.3s" }} />
+            <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontWeight: 500 }}>{completed}/{total}</span>
+            <div style={{ width: 50, height: 4, background: "var(--bg)", borderRadius: 2, overflow: "hidden" }}>
+              <div style={{ width: `${pct}%`, height: "100%", background: pct === 100 ? "#22c55e" : "var(--primary)", borderRadius: 2, transition: "width 0.3s" }} />
             </div>
           </div>
         )}
       </div>
       {flexible.length > 0 && (
-        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.5rem" }}>
+        <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", marginBottom: "0.6rem" }}>
           {flexible.map(e => {
             const done = e.completed;
             return (
               <div key={e.id} onClick={() => onOpenWorkout(e)}
-                style={{ background: done ? "var(--primary)" : "var(--bg)", borderRadius: 6, padding: "0.25rem 0.5rem", fontSize: "0.78rem", display: "flex", alignItems: "center", gap: "0.35rem", cursor: "pointer", opacity: done ? 0.7 : 1, textDecoration: done ? "line-through" : "none", maxWidth: "100%", overflow: "hidden" }}>
-                <input type="checkbox" checked={done} onChange={() => onToggle(e)} onClick={e => e.stopPropagation()} style={{ accentColor: "var(--primary)", cursor: "pointer", flexShrink: 0 }} />
-                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.activity}{e.duration_minutes ? ` (${e.duration_minutes}m)` : ""}{e.frequency_hint ? ` · ${e.frequency_hint}` : ""}</span>
-                <button onClick={ev => { ev.stopPropagation(); onDelete(e.id); }} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "0.75rem", padding: 0, lineHeight: 1, flexShrink: 0 }}>✕</button>
+                style={{ background: done ? "color-mix(in srgb, var(--primary) 15%, var(--bg))" : "var(--bg)", borderRadius: 8, padding: "0.3rem 0.6rem", fontSize: "0.75rem", display: "flex", alignItems: "center", gap: "0.35rem", cursor: "pointer", opacity: done ? 0.6 : 1, textDecoration: done ? "line-through" : "none", border: done ? "1px solid var(--primary)" : "1px solid transparent", maxWidth: "100%", overflow: "hidden", transition: "all 0.15s" }}>
+                <div onClick={(ev) => { ev.stopPropagation(); onToggle(e); }}
+                  style={{ width: 14, height: 14, borderRadius: "50%", border: done ? "1.5px solid var(--primary)" : "1.5px solid var(--border)", background: done ? "var(--primary)" : "transparent", flexShrink: 0, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {done && <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="4"><path d="M20 6L9 17l-5-5" /></svg>}
+                </div>
+                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.activity}{e.duration_minutes ? ` (${e.duration_minutes}m)` : ""}</span>
+                <button onClick={ev => { ev.stopPropagation(); onDelete(e.id); }} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "0.65rem", padding: 0, lineHeight: 1, flexShrink: 0, opacity: 0.5 }}>✕</button>
               </div>
             );
           })}
         </div>
       )}
-      <div className="calendar-grid">
+          <div className="calendar-grid">
         {DAYS.map((day, idx) => {
           const dayNum = (idx + 6) % 7;
           const dayEntries = fixed.filter(e => e.day_of_week === dayNum);
           const isToday = dayNum === TODAY_DOW;
           const dayDone = dayEntries.filter(e => e.completed).length;
+          const dayTotal = dayEntries.length;
+          const dayPct = dayTotal > 0 ? Math.round((dayDone / dayTotal) * 100) : 0;
           return (
             <div key={day} className="calendar-day" style={{
-              background: "var(--bg)", borderRadius: 8, padding: "0.45rem",
+              background: isToday ? "color-mix(in srgb, var(--primary) 10%, var(--bg))" : "var(--bg)",
+              borderRadius: 10, padding: "0.5rem", minHeight: dayTotal > 0 ? "auto" : "3rem",
               border: isToday ? "1.5px solid var(--primary)" : "1.5px solid transparent",
+              transition: "all 0.15s",
             }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.25rem" }}>
-                <div style={{ fontSize: "0.68rem", fontWeight: 600, color: isToday ? "var(--primary)" : "var(--text-muted)", textTransform: "uppercase" }}>{day}</div>
-                {dayEntries.length > 0 && dayDone === dayEntries.length && (
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3"><path d="M20 6L9 17l-5-5" /></svg>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.3rem" }}>
+                <div style={{ fontSize: "0.68rem", fontWeight: 700, color: isToday ? "var(--primary)" : "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.03em" }}>{day}</div>
+                {dayTotal > 0 && dayDone === dayTotal && (
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3"><path d="M20 6L9 17l-5-5" /></svg>
                 )}
               </div>
               {dayEntries.map(e => {
                 const done = e.completed;
                 return (
                   <div key={e.id} onClick={() => onOpenWorkout(e)}
-                    style={{ fontSize: "0.76rem", lineHeight: 1.4, display: "flex", alignItems: "flex-start", gap: "0.2rem", cursor: "pointer", borderRadius: 4, padding: "1px 0", textDecoration: done ? "line-through" : "none", opacity: done ? 0.5 : 1 }}>
-                    <input type="checkbox" checked={done} onChange={() => onToggle(e)} onClick={ev => ev.stopPropagation()} style={{ marginTop: 2, accentColor: "var(--primary)", cursor: "pointer", flexShrink: 0 }} />
-                    <span style={{ flex: 1 }}>{e.activity}{e.duration_minutes ? ` · ${e.duration_minutes}m` : ""}</span>
-                    <button onClick={ev => { ev.stopPropagation(); onDelete(e.id); }} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "0.65rem", padding: 0, lineHeight: 1, flexShrink: 0 }}>✕</button>
+                    style={{ fontSize: "0.73rem", lineHeight: 1.3, display: "flex", alignItems: "center", gap: "0.25rem", cursor: "pointer", borderRadius: 5, padding: "2px 3px", marginBottom: "1px", background: done ? "color-mix(in srgb, var(--primary) 15%, transparent)" : "transparent", textDecoration: done ? "line-through" : "none", opacity: done ? 0.5 : 1, transition: "all 0.15s" }}>
+                    <div onClick={(ev) => { ev.stopPropagation(); onToggle(e); }}
+                      style={{ width: 12, height: 12, borderRadius: "50%", border: done ? "1.5px solid var(--primary)" : "1.5px solid var(--border)", background: done ? "var(--primary)" : "transparent", flexShrink: 0, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {done && <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="4"><path d="M20 6L9 17l-5-5" /></svg>}
+                    </div>
+                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.activity}{e.duration_minutes ? ` · ${e.duration_minutes}m` : ""}</span>
+                    <button onClick={ev => { ev.stopPropagation(); onDelete(e.id); }} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "0.6rem", padding: 0, lineHeight: 1, flexShrink: 0, opacity: 0.6 }}>✕</button>
                   </div>
                 );
               })}
@@ -657,8 +698,8 @@ function WeekCalendar({ weekLabel, entries, onToggle, onDelete, onOpenWorkout }:
 
 function Overlay({ children, onClose, wide }: { children: ReactNode; onClose: () => void; wide?: boolean }) {
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: "1rem" }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: "1.5rem", width: "100%", maxWidth: wide ? 640 : 500, maxHeight: "90vh", overflowY: "auto", margin: "auto" }}>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 100, padding: "1rem" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", borderRadius: "16px 16px 0 0", padding: "1.5rem", width: "100%", maxWidth: wide ? 640 : 500, maxHeight: "90vh", overflowY: "auto", margin: "auto" }}>
         {children}
       </div>
     </div>
