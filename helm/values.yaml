@@ -32,6 +32,8 @@ externalDatabase:
 backend:
   replicaCount: 1
   port: 8000
+  image:
+    tag: ""
   api_secret_name: ""
   env:
     APP_NAME: "Home App"
@@ -51,6 +53,8 @@ backend:
 frontend:
   replicaCount: 1
   port: 8080
+  image:
+    tag: ""
   resources: {}
   #  limits:
   #    cpu: 200m
