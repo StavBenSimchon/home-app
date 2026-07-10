@@ -116,8 +116,8 @@ jobs:
         id: tags
         run: |
           TAG=${{ steps.sha.outputs.short }}
-          [[ "${{ needs.backend.result }}" == "success" ]] && echo "backend=$TAG" >> $GITHUB_OUTPUT
-          [[ "${{ needs.frontend.result }}" == "success" ]] && echo "frontend=$TAG" >> $GITHUB_OUTPUT
+          [[ "${{ needs.backend.result }}" == "success" ]] && echo "backend=$TAG" >> $GITHUB_OUTPUT || true
+          [[ "${{ needs.frontend.result }}" == "success" ]] && echo "frontend=$TAG" >> $GITHUB_OUTPUT || true
 
       - name: Update home-infra
         uses: ./.github/actions/update-home-infra
