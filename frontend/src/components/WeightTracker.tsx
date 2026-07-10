@@ -141,14 +141,13 @@ export default function WeightTracker() {
               const val = hovered.lineKey === "fat"
                 ? (entry.fat_percentage != null ? ((entry.weight_kg * entry.fat_percentage) / 100).toFixed(1) : null)
                 : (entry.muscle_percentage != null ? ((entry.weight_kg * entry.muscle_percentage) / 100).toFixed(1) : null);
-              const pct = hovered.lineKey === "fat" ? entry.fat_percentage : entry.muscle_percentage;
               const tx = Math.min(hovered.x + 8, graphData.W - 90);
               const ty = Math.max(hovered.y - 35, 5);
               return (
                 <g pointerEvents="none">
                   <rect x={tx - 4} y={ty - 2} width="86" height="38" rx="6" fill="var(--surface)" stroke="var(--border)" strokeWidth="1" />
                   <text x={tx} y={ty + 12} fontSize="10" fill={line.color} fontWeight="600">{line.label}: {val}kg</text>
-                  <text x={tx} y={ty + 26} fontSize="9" fill="var(--text-muted)">{entry.measured_at} · {pct}%</text>
+                  <text x={tx} y={ty + 26} fontSize="9" fill="var(--text-muted)">{entry.measured_at} · {entry.weight_kg}kg total</text>
                 </g>
               );
             })()}
