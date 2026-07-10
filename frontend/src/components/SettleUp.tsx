@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 
 const s = {
   card: { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "1.25rem" } as const,
@@ -35,6 +36,7 @@ function calcSettlements(partners: Partner[]): { from: string; to: string; amoun
 }
 
 export default function SettleUp() {
+  const navigate = useNavigate();
   const [partners, setPartners] = useState<Partner[]>([]);
   const [newName, setNewName] = useState("");
   const [addingTo, setAddingTo] = useState<number | null>(null);
@@ -69,6 +71,8 @@ export default function SettleUp() {
 
   return (
     <div className="responsive-container">
+      <button onClick={() => navigate("/")} style={{ background: "none", border: "none", color: "var(--primary)", cursor: "pointer", fontSize: "0.9rem", padding: 0, marginBottom: "1.5rem" }}>&larr; Dashboard</button>
+
       <h1 style={{ fontSize: "clamp(1.35rem, 5vw, 1.75rem)", fontWeight: 700, marginBottom: "1.5rem" }}>Settle Up</h1>
 
       {/* Add partner */}
