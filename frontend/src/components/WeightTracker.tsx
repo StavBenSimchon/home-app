@@ -18,6 +18,7 @@ export default function WeightTracker() {
   const [form, setForm] = useState({ weight_kg: "", fat_percentage: "", muscle_percentage: "", measured_at: "" });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ weight_kg: "", fat_percentage: "", muscle_percentage: "", measured_at: "" });
+  const [hovered, setHovered] = useState<{ lineKey: string; index: number; x: number; y: number } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -126,8 +127,28 @@ export default function WeightTracker() {
               <path key={line.key} d={line.data.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ")} fill="none" stroke={line.color} strokeWidth="2" strokeLinejoin="round" />
             ))}
             {graphData.lines.map(line => line.data.map((p, i) => (
-              <circle key={`${line.key}-${i}`} cx={p.x} cy={p.y} r="3" fill={line.color} />
+              <circle key={`${line.key}-${i}`} cx={p.x} cy={p.y} r="4" fill={line.color}
+                style={{ cursor: "pointer" }}
+                onMouseEnter={() => setHovered({ lineKey: line.key, index: i, x: p.x, y: p.y })}
+                onMouseLeave={() => setHovered(null)} />
             )))}
+            {hovered && (() => {
+              const entry = sorted[hovered.index];
+              const line = graphData.lines.find(l => l.key === hovered.lineKey)!;
+              const val = hovered.lineKey === "fat"
+                ? (entry.fat_percentage != null ? ((entry.weight_kg * entry.fat_percentage) / 100).toFixed(1) : null)
+                : (entry.muscle_percentage != null ? ((entry.weight_kg * entry.muscle_percentage) / 100).toFixed(1) : null);
+              const pct = hovered.lineKey === "fat" ? entry.fat_percentage : entry.muscle_percentage;
+              const tx = Math.min(hovered.x + 8, graphData.W - 90);
+              const ty = Math.max(hovered.y - 35, 5);
+              return (
+                <g>
+                  <rect x={tx - 4} y={ty - 2} width="86" height="38" rx="6" fill="var(--surface)" stroke="var(--border)" strokeWidth="1" />
+                  <text x={tx} y={ty + 12} fontSize="10" fill={line.color} fontWeight="600">{line.label}: {val}kg</text>
+                  <text x={tx} y={ty + 26} fontSize="9" fill="var(--text-muted)">{entry.measured_at} · {pct}%</text>
+                </g>
+              );
+            })()}
             {graphData.labels.map((l, i) => (
               <text key={i} x={graphData.xScale(i)} y={graphData.H - 5} textAnchor={i === 0 ? "start" : i === graphData.labels.length - 1 ? "end" : "middle"} fill="var(--text-muted)" fontSize="10">{l}</text>
             ))}
