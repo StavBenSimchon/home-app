@@ -9,7 +9,11 @@ spec:
     - name: {{ required "httproute.parentRef.name is required" .Values.httproute.parentRef.name }}
       namespace: {{ .Values.httproute.parentRef.namespace | default "default" }}
   rules:
-    - matches:
+    - {{- if .Values.httproute.backendTimeout }}
+      timeouts:
+        request: {{ .Values.httproute.backendTimeout }}
+      {{- end }}
+      matches:
         - path:
             type: PathPrefix
             value: /api/
@@ -19,10 +23,6 @@ spec:
           name: {{ include "home-app.fullname" . }}-backend
           port: {{ .Values.backend.port }}
           weight: 1
-          {{- with .Values.httproute.backendTimeout }}
-          timeouts:
-            request: {{ . }}
-          {{- end }}
     - matches:
         - path:
             type: PathPrefix
