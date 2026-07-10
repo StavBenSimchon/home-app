@@ -75,14 +75,15 @@ export default function WeightTracker() {
     const fatKg = sorted.map(e => e.fat_percentage != null ? e.weight_kg * e.fat_percentage / 100 : null);
     const muscleKg = sorted.map(e => e.muscle_percentage != null ? e.weight_kg * e.muscle_percentage / 100 : null);
     const vals = [...fatKg, ...muscleKg].filter((v): v is number => v != null);
-    if (vals.length === 0) return { W: 600, H: 200, pad: { top: 10, right: 10, bottom: 25, left: 45 }, lines: [], labels: sorted.map(e => e.measured_at.slice(5)) };
+    const W = 600, H = 200, pad = { top: 10, right: 10, bottom: 25, left: 45 };
+    const iw = W - pad.left - pad.right;
+    const ih = H - pad.top - pad.bottom;
+
+    if (vals.length === 0) return { W, H, pad, iw, yScale: (v: number) => v, xScale: (i: number) => pad.left + (sorted.length === 1 ? iw / 2 : (i / Math.max(sorted.length - 1, 1)) * iw), lines: [], ticks: [], labels: sorted.map(e => e.measured_at.slice(5)) };
 
     const minVal = Math.min(...vals) * 0.9;
     const maxVal = Math.max(...vals) * 1.1 || 1;
     const range = maxVal - minVal || 1;
-    const W = 600, H = 200, pad = { top: 10, right: 10, bottom: 25, left: 45 };
-    const iw = W - pad.left - pad.right;
-    const ih = H - pad.top - pad.bottom;
     const yScale = (v: number) => pad.top + ih - ((v - minVal) / range) * ih;
     const xScale = (i: number) => pad.left + (sorted.length === 1 ? iw / 2 : (i / (sorted.length - 1)) * iw);
 
