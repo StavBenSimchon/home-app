@@ -1,6 +1,8 @@
 name: Cleanup Container Images
 
 on:
+  schedule:
+    - cron: "0 3 * * 1"
   workflow_dispatch:
     inputs:
       packages:
@@ -25,8 +27,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OWNER: ${{ github.repository_owner }}
-          KEEP: ${{ github.event.inputs.keep }}
-          PACKAGES: ${{ github.event.inputs.packages }}
+          KEEP: ${{ github.event.inputs.keep || '3' }}
+          PACKAGES: ${{ github.event.inputs.packages || 'home-app/backend,home-app/frontend' }}
         run: |
           set -euo pipefail
 
