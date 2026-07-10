@@ -11,7 +11,6 @@ const SPINNER = (
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const TODAY_DOW = new Date().getDay();
-const TODAY_STR = new Date().toISOString().split("T")[0];
 
 function getCurrentWeek(startDate: string | null): number {
   if (!startDate) return 1;
@@ -660,7 +659,6 @@ function WeekCalendar({ weekLabel, entries, onToggle, onDelete, onOpenWorkout }:
           const isToday = dayNum === TODAY_DOW;
           const dayDone = dayEntries.filter(e => e.completed).length;
           const dayTotal = dayEntries.length;
-          const dayPct = dayTotal > 0 ? Math.round((dayDone / dayTotal) * 100) : 0;
           return (
             <div key={day} className="calendar-day" style={{
               background: isToday ? "color-mix(in srgb, var(--primary) 10%, var(--bg))" : "var(--bg)",
