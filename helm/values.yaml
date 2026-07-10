@@ -40,7 +40,7 @@ backend:
     DEBUG: "true"
     AI_API_KEY: ""
     AI_MODEL: "deepseek-v4-flash-free"
-    AI_BASE_URL: "https://opencode.ai/zen/v1"
+    AI_BASE_URL: "https://openrouter.ai/api/v1"
   resources: {}
   #  limits:
   #    cpu: 500m
