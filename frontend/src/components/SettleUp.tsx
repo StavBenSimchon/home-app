@@ -34,14 +34,6 @@ function settle(balances: { name: string; balance: number }[]): { from: string; 
   return result;
 }
 
-function calcEqualSettlements(persons: Person[]): { from: string; to: string; amount: number }[] {
-  if (persons.length < 2) return [];
-  const total = persons.reduce((s, p) => s + p.paid, 0);
-  const share = total / persons.length;
-  const balances = persons.map(p => ({ name: p.name, balance: p.paid - share }));
-  return settle(balances);
-}
-
 export default function SettleUp() {
   const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>(null);
@@ -72,7 +64,7 @@ export default function SettleUp() {
 }
 
 function EqualSplit({ onBack }: { onBack: () => void }) {
-  const [persons, setPersons] = useState<Person[]>([]);
+  const [persons, setPersons] = useState<{ id: number; name: string; amounts: number[] }[]>([]);
   const [newName, setNewName] = useState("");
   const [addingTo, setAddingTo] = useState<number | null>(null);
   const [addAmount, setAddAmount] = useState("");
@@ -80,21 +72,30 @@ function EqualSplit({ onBack }: { onBack: () => void }) {
   function addPerson() {
     const name = newName.trim();
     if (!name || persons.some(p => p.name.toLowerCase() === name.toLowerCase())) return;
-    setPersons([...persons, { id: Date.now(), name, paid: 0 }]);
+    setPersons([...persons, { id: Date.now(), name, amounts: [] }]);
     setNewName("");
   }
 
   function addAmountTo(id: number) {
     const val = parseFloat(addAmount);
     if (!val || val <= 0) return;
-    setPersons(persons.map(p => p.id === id ? { ...p, paid: Math.round((p.paid + val) * 100) / 100 } : p));
+    setPersons(persons.map(p => p.id === id ? { ...p, amounts: [...p.amounts, Math.round(val * 100) / 100] } : p));
     setAddAmount("");
     setAddingTo(null);
   }
 
-  const total = useMemo(() => persons.reduce((s, p) => s + p.paid, 0), [persons]);
-  const share = persons.length > 0 ? total / persons.length : 0;
-  const settlements = useMemo(() => calcEqualSettlements(persons), [persons]);
+  function removeAmount(personId: number, idx: number) {
+    setPersons(persons.map(p => p.id === personId ? { ...p, amounts: p.amounts.filter((_, i) => i !== idx) } : p));
+  }
+
+  const totals = useMemo(() => persons.map(p => ({ ...p, total: p.amounts.reduce((a, b) => a + b, 0) })), [persons]);
+  const grandTotal = useMemo(() => totals.reduce((s, p) => s + p.total, 0), [totals]);
+  const share = persons.length > 0 ? grandTotal / persons.length : 0;
+  const settlements = useMemo(() => {
+    if (persons.length < 2 || grandTotal === 0) return [];
+    const balances = totals.map(p => ({ name: p.name, balance: p.total - share }));
+    return settle(balances);
+  }, [totals, grandTotal, share, persons.length]);
 
   return (
     <div>
@@ -109,20 +110,35 @@ function EqualSplit({ onBack }: { onBack: () => void }) {
           </div>
         </label>
       </div>
-      {persons.length > 0 && (
+      {totals.length > 0 && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "0.75rem", marginBottom: "1rem" }}>
-          {persons.map(p => {
-            const balance = p.paid - share;
+          {totals.map(p => {
+            const balance = p.total - share;
             return (
               <div key={p.id} style={s.card}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
                   <div style={{ fontSize: "1.05rem", fontWeight: 700 }}>{p.name}</div>
                   <button onClick={() => setPersons(persons.filter(x => x.id !== p.id))} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "0.8rem" }}>✕</button>
                 </div>
-                <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>Paid: ${p.paid.toFixed(2)} · Share: ${share.toFixed(2)}</div>
-                {persons.length > 1 && (
+                <div style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.25rem" }}>${p.total.toFixed(2)}</div>
+                {p.amounts.length > 1 && (
+                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>
+                    {p.amounts.map(a => `$${a.toFixed(2)}`).join(" + ")}
+                  </div>
+                )}
+                {persons.length > 1 && grandTotal > 0 && (
                   <div style={{ padding: "0.35rem 0.6rem", background: balance > 0.01 ? "rgba(34,197,94,0.1)" : balance < -0.01 ? "rgba(239,68,68,0.1)" : "var(--bg)", borderRadius: 8, marginBottom: "0.75rem", fontSize: "0.82rem", fontWeight: 600, color: balance > 0.01 ? "#22c55e" : balance < -0.01 ? "#ef4444" : "var(--text-muted)" }}>
                     {balance > 0.01 ? `Gets back $${balance.toFixed(2)}` : balance < -0.01 ? `Owes $${Math.abs(balance).toFixed(2)}` : "Settled"}
+                  </div>
+                )}
+                {p.amounts.length > 0 && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", marginBottom: "0.75rem" }}>
+                    {p.amounts.map((a, i) => (
+                      <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "0.25rem 0.5rem", background: "var(--bg)", borderRadius: 6, fontSize: "0.8rem" }}>
+                        <span>${a.toFixed(2)}</span>
+                        <button onClick={() => removeAmount(p.id, i)} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "0.65rem" }}>✕</button>
+                      </div>
+                    ))}
                   </div>
                 )}
                 {addingTo === p.id ? (
@@ -142,23 +158,23 @@ function EqualSplit({ onBack }: { onBack: () => void }) {
       )}
 
       {/* Summary */}
-      {persons.length > 1 && (
+      {totals.length > 1 && grandTotal > 0 && (
         <div style={s.card}>
-          <h2 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "0.75rem" }}>Settlements</h2>
+          <h2 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "0.75rem" }}>Summary</h2>
           <div style={{ display: "flex", gap: "1.5rem", marginBottom: "1rem", fontSize: "0.82rem", color: "var(--text-muted)" }}>
-            <span>Total: <strong style={{ color: "var(--text)" }}>${total.toFixed(2)}</strong></span>
-            <span>Per person: <strong style={{ color: "var(--text)" }}>${share.toFixed(2)}</strong></span>
+            <span>Total: <strong style={{ color: "var(--text)" }}>${grandTotal.toFixed(2)}</strong></span>
+            <span>Split: <strong style={{ color: "var(--text)" }}>${share.toFixed(2)}</strong> each</span>
           </div>
           {settlements.length === 0 ? (
             <p style={{ color: "#22c55e", fontSize: "0.9rem", fontWeight: 500 }}>All settled up!</p>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
-              {settlements.map((s, i) => (
+              {settlements.map((st, i) => (
                 <div key={i} style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 0.75rem", background: "var(--bg)", borderRadius: 8, fontSize: "0.9rem" }}>
-                  <span style={{ fontWeight: 600, color: "#ef4444" }}>{s.from}</span>
+                  <span style={{ fontWeight: 600, color: "#ef4444" }}>{st.from}</span>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2"><path d="M5 12h14m-7-7l7 7-7 7" /></svg>
-                  <span style={{ fontWeight: 600, color: "#22c55e" }}>{s.to}</span>
-                  <span style={{ marginLeft: "auto", fontWeight: 700 }}>${s.amount.toFixed(2)}</span>
+                  <span style={{ fontWeight: 600, color: "#22c55e" }}>{st.to}</span>
+                  <span style={{ marginLeft: "auto", fontWeight: 700 }}>${st.amount.toFixed(2)}</span>
                 </div>
               ))}
             </div>
@@ -166,7 +182,7 @@ function EqualSplit({ onBack }: { onBack: () => void }) {
         </div>
       )}
 
-      {persons.length === 0 && <p style={{ textAlign: "center", color: "var(--text-muted)", padding: "2rem" }}>Add people to start splitting.</p>}
+      {totals.length === 0 && <p style={{ textAlign: "center", color: "var(--text-muted)", padding: "2rem" }}>Add people to start splitting.</p>}
     </div>
   );
 }
