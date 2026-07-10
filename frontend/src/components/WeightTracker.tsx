@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type React from "react";
 import { api, type WeightEntry } from "../api";
 
 const s = {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import type React from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type Goal, type PlanEntry, type Exercise } from "../api";
 import WeightTracker from "./WeightTracker";
