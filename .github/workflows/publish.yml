@@ -116,13 +116,8 @@ jobs:
         id: tags
         run: |
           TAG=${{ steps.sha.outputs.short }}
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" || "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "backend=$TAG" >> $GITHUB_OUTPUT
-            echo "frontend=$TAG" >> $GITHUB_OUTPUT
-          else
-            [[ "${{ needs.changes.outputs.backend }}" == "true" ]] && echo "backend=$TAG" >> $GITHUB_OUTPUT
-            [[ "${{ needs.changes.outputs.frontend }}" == "true" ]] && echo "frontend=$TAG" >> $GITHUB_OUTPUT
-          fi
+          [[ "${{ needs.backend.result }}" == "success" ]] && echo "backend=$TAG" >> $GITHUB_OUTPUT
+          [[ "${{ needs.frontend.result }}" == "success" ]] && echo "frontend=$TAG" >> $GITHUB_OUTPUT
 
       - name: Update home-infra
         uses: ./.github/actions/update-home-infra
