@@ -114,6 +114,8 @@ export const api = {
   listWeight: () => request<WeightEntry[]>("/weight/"),
   createWeight: (data: { weight_kg: number; fat_percentage?: number; muscle_percentage?: number; measured_at?: string }) =>
     request<WeightEntry>("/weight/", { method: "POST", body: JSON.stringify(data) }),
+  updateWeight: (id: string, data: { weight_kg: number; fat_percentage?: number; muscle_percentage?: number; measured_at?: string }) =>
+    request<WeightEntry>(`/weight/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   deleteWeight: (id: string) =>
     request<void>(`/weight/${id}`, { method: "DELETE" }),
 };

@@ -11,6 +11,13 @@ class WeightCreate(BaseModel):
     measured_at: date | None = None
 
 
+class WeightUpdate(BaseModel):
+    weight_kg: float | None = None
+    fat_percentage: float | None = None
+    muscle_percentage: float | None = None
+    measured_at: date | None = None
+
+
 class WeightResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
