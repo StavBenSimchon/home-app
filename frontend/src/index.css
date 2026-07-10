@@ -67,12 +67,15 @@ input:focus, select:focus, button:focus-visible {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 4px;
+  overflow: hidden;
 }
 
 .calendar-day {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 @media (max-width: 640px) {
