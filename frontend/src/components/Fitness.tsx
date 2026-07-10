@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type Goal, type PlanEntry, type Exercise } from "../api";
+import WeightTracker from "./WeightTracker";
 
 const SPINNER = (
   <svg viewBox="0 0 24 24" style={{ width: 18, height: 18, animation: "spin 0.8s linear infinite", verticalAlign: "middle" }}>
@@ -43,6 +44,9 @@ export default function Fitness() {
   // workout detail
   const [workoutEntry, setWorkoutEntry] = useState<PlanEntry | null>(null);
   const [workoutExercises, setWorkoutExercises] = useState<Exercise[]>([]);
+
+  // tab
+  const [activeTab, setActiveTab] = useState<"plan" | "weight">("plan");
 
   // refine chat (per goal)
   const [refineMessages, setRefineMessages] = useState<{ role: "user" | "assistant"; text: string }[]>([]);
@@ -243,7 +247,22 @@ export default function Fitness() {
         <button onClick={() => { resetGoalForm(); setEditingGoal(null); setShowGoalForm(true); }} style={s.btnPrimary}>+ New Goal</button>
       </div>
 
-      {/* ---------- Chat ---------- */}
+      {/* Tabs */}
+      <div style={{ display: "flex", gap: "0.25rem", marginBottom: "1.5rem", borderBottom: "1px solid var(--border)" }}>
+        {(["plan", "weight"] as const).map(tab => (
+          <button key={tab} onClick={() => setActiveTab(tab)}
+            style={{
+              background: "none", border: "none", padding: "0.5rem 1rem", fontSize: "0.9rem", fontWeight: activeTab === tab ? 600 : 400,
+              color: activeTab === tab ? "var(--primary)" : "var(--text-muted)", cursor: "pointer",
+              borderBottom: activeTab === tab ? "2px solid var(--primary)" : "2px solid transparent", marginBottom: -1,
+            }}>
+            {tab === "plan" ? "Plan" : "Weight"}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "plan" && (
+        <>{/* ---------- Chat ---------- */}
       {(chatStep === "idle" || chatStep === "input") && (
         <div style={{ ...s.card, marginBottom: "1.5rem" }}>
           <div className="responsive-flex">
@@ -457,9 +476,21 @@ export default function Fitness() {
           </div>
         </Overlay>
       )}
+    </>)}
+      {activeTab === "weight" && <WeightTracker />}
     </main>
   );
 }
+
+const s = {
+  card: { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1rem" } as React.CSSProperties,
+  btnPrimary: { background: "var(--primary)", color: "#fff", border: "none", borderRadius: 8, padding: "0.5rem 1rem", fontSize: "0.85rem", fontWeight: 600, cursor: "pointer" } as React.CSSProperties,
+  btnSecondary: { background: "var(--surface)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: 8, padding: "0.5rem 1rem", fontSize: "0.85rem", fontWeight: 500, cursor: "pointer" } as React.CSSProperties,
+  btnSmall: { background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "0.25rem 0.55rem", fontSize: "0.75rem", fontWeight: 500, cursor: "pointer", color: "var(--text)" } as React.CSSProperties,
+  link: { background: "none", border: "none", color: "var(--primary)", cursor: "pointer", fontSize: "0.9rem", padding: 0, marginBottom: "1.5rem" } as React.CSSProperties,
+  input: { background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8, padding: "0.55rem 0.75rem", color: "var(--text)", fontSize: "0.85rem", width: "100%", marginTop: "0.25rem" } as React.CSSProperties,
+  label: { fontSize: "0.82rem", color: "var(--text-muted)", display: "flex", flexDirection: "column" } as React.CSSProperties,
+};
 
 // ---------- Sub-components ----------
 
@@ -571,14 +602,3 @@ function Badge({ label, value }: { label: string; value: string }) {
     </span>
   );
 }
-
-const s = {
-  card: { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1rem" } as React.CSSProperties,
-  btnPrimary: { background: "var(--primary)", color: "#fff", border: "none", borderRadius: 8, padding: "0.5rem 1rem", fontSize: "0.85rem", fontWeight: 600, cursor: "pointer" } as React.CSSProperties,
-  btnSecondary: { background: "var(--surface)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: 8, padding: "0.5rem 1rem", fontSize: "0.85rem", fontWeight: 500, cursor: "pointer" } as React.CSSProperties,
-  btnSmall: { background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "0.25rem 0.55rem", fontSize: "0.75rem", fontWeight: 500, cursor: "pointer", color: "var(--text)" } as React.CSSProperties,
-  link: { background: "none", border: "none", color: "var(--primary)", cursor: "pointer", fontSize: "0.9rem", padding: 0, marginBottom: "1.5rem" } as React.CSSProperties,
-  input: { background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8, padding: "0.55rem 0.75rem", color: "var(--text)", fontSize: "0.85rem", width: "100%", marginTop: "0.25rem" } as React.CSSProperties,
-  label: { fontSize: "0.82rem", color: "var(--text-muted)", display: "flex", flexDirection: "column" } as React.CSSProperties,
-  // grid2 removed — use className="responsive-grid-2"
-};

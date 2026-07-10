@@ -54,6 +54,15 @@ export interface PlanEntry {
   exercises?: Exercise[];
 }
 
+export interface WeightEntry {
+  id: string;
+  weight_kg: number;
+  fat_percentage: number | null;
+  muscle_percentage: number | null;
+  measured_at: string;
+  created_at: string;
+}
+
 export const api = {
   // Goals
   listGoals: () => request<Goal[]>("/goals/"),
@@ -100,4 +109,11 @@ export const api = {
     request<{ type: string; message?: string; goal?: Goal; entries?: PlanEntry[] }>("/ai/continue", {
       method: "POST", body: JSON.stringify({ goal_id: goalId, prompt, finalize, history: history ?? [] }),
     }),
+
+  // Weight tracking
+  listWeight: () => request<WeightEntry[]>("/weight/"),
+  createWeight: (data: { weight_kg: number; fat_percentage?: number; muscle_percentage?: number; measured_at?: string }) =>
+    request<WeightEntry>("/weight/", { method: "POST", body: JSON.stringify(data) }),
+  deleteWeight: (id: string) =>
+    request<void>(`/weight/${id}`, { method: "DELETE" }),
 };

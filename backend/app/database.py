@@ -47,3 +47,13 @@ async def init_db():
                 created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
             )
         """))
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS weight_entries (
+                id UUID PRIMARY KEY,
+                weight_kg FLOAT NOT NULL,
+                fat_percentage FLOAT,
+                muscle_percentage FLOAT,
+                measured_at DATE NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+            )
+        """))

@@ -14,8 +14,11 @@ spec:
             type: PathPrefix
             value: /api/
       backendRefs:
-        - name: {{ include "home-app.fullname" . }}-backend
+        - group: ""
+          kind: Service
+          name: {{ include "home-app.fullname" . }}-backend
           port: {{ .Values.backend.port }}
+          weight: 1
           {{- with .Values.httproute.backendTimeout }}
           timeouts:
             request: {{ . }}
@@ -25,5 +28,8 @@ spec:
             type: PathPrefix
             value: /
       backendRefs:
-        - name: {{ include "home-app.fullname" . }}-frontend
+        - group: ""
+          kind: Service
+          name: {{ include "home-app.fullname" . }}-frontend
           port: {{ .Values.frontend.port }}
+          weight: 1
