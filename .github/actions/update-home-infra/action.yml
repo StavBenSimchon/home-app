@@ -1,0 +1,64 @@
+name: Update Home Infra
+description: Bump image tags and chart version in the home-infra repo
+
+inputs:
+  chart-version:
+    required: false
+    default: ""
+    description: Chart version from Chart.yaml (leave empty to skip)
+  backend-tag:
+    required: false
+    default: ""
+    description: Backend image short SHA (leave empty to skip)
+  frontend-tag:
+    required: false
+    default: ""
+    description: Frontend image short SHA (leave empty to skip)
+  gh-pat:
+    required: true
+    description: PAT with write access to home-infra
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout home-infra
+      uses: actions/checkout@v4
+      with:
+        repository: StavBenSimchon/home-infra
+        token: ${{ inputs.gh-pat }}
+        path: home-infra
+
+    - name: Update chart version
+      if: ${{ inputs.chart-version != '' }}
+      shell: bash
+      run: |
+        yq -i '.spec.sources[0].targetRevision = "${{ inputs.chart-version }}"' \
+          home-infra/environments/live/applications/home-app.yaml
+
+    - name: Update backend tag
+      if: ${{ inputs.backend-tag != '' }}
+      shell: bash
+      run: |
+        yq -i '.backend.image.tag = "${{ inputs.backend-tag }}"' \
+          home-infra/environments/live/values/home-app-values.yaml
+
+    - name: Update frontend tag
+      if: ${{ inputs.frontend-tag != '' }}
+      shell: bash
+      run: |
+        yq -i '.frontend.image.tag = "${{ inputs.frontend-tag }}"' \
+          home-infra/environments/live/values/home-app-values.yaml
+
+    - name: Commit and push
+      shell: bash
+      run: |
+        cd home-infra
+        git config user.name "Home App Bot"
+        git config user.email "bot@home-app.bubblerock.org"
+        git add .
+        msg="chore: update home-app"
+        [ -n "${{ inputs.chart-version }}" ] && msg="$msg to chart ${{ inputs.chart-version }}"
+        [ -n "${{ inputs.backend-tag }}" ] && msg="$msg, backend ${{ inputs.backend-tag }}"
+        [ -n "${{ inputs.frontend-tag }}" ] && msg="$msg, frontend ${{ inputs.frontend-tag }}"
+        git diff --cached --quiet || git commit -m "$msg"
+        git push

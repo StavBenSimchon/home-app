@@ -100,3 +100,33 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+  update:
+    needs: [changes, backend, frontend]
+    if: always() && needs.backend.result != 'failure' && needs.frontend.result != 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract short SHA
+        id: sha
+        run: echo "short=${GITHUB_SHA:0:7}" >> $GITHUB_OUTPUT
+
+      - name: Determine which tags to update
+        id: tags
+        run: |
+          TAG=${{ steps.sha.outputs.short }}
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" || "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "backend=$TAG" >> $GITHUB_OUTPUT
+            echo "frontend=$TAG" >> $GITHUB_OUTPUT
+          else
+            [[ "${{ needs.changes.outputs.backend }}" == "true" ]] && echo "backend=$TAG" >> $GITHUB_OUTPUT
+            [[ "${{ needs.changes.outputs.frontend }}" == "true" ]] && echo "frontend=$TAG" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update home-infra
+        uses: ./.github/actions/update-home-infra
+        with:
+          backend-tag: ${{ steps.tags.outputs.backend }}
+          frontend-tag: ${{ steps.tags.outputs.frontend }}
+          gh-pat: ${{ secrets.GH_PAT }}

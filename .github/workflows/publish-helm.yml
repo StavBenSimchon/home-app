@@ -32,3 +32,20 @@ jobs:
           version="$(grep '^version:' helm/Chart.yaml | awk '{print $2}')"
           helm package helm -d /tmp/charts
           helm push "/tmp/charts/home-app-${version}.tgz" "oci://ghcr.io/${{ env.owner }}"
+
+  update:
+    needs: publish
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract chart version
+        id: chart
+        run: echo "version=$(yq '.version' helm/Chart.yaml)" >> $GITHUB_OUTPUT
+
+      - name: Update home-infra
+        uses: ./.github/actions/update-home-infra
+        with:
+          chart-version: ${{ steps.chart.outputs.version }}
+          gh-pat: ${{ secrets.GH_PAT }}
