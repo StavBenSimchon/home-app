@@ -661,7 +661,7 @@ function WeekCalendar({ weekLabel, weekNum, goalStartDate, entries, onToggle, on
           const dayDone = dayEntries.filter(e => e.completed).length;
           const dayTotal = dayEntries.length;
           const cellDate = goalStartDate
-            ? new Date(new Date(goalStartDate).getTime() + ((weekNum - 1) * 7 + dayNum) * 86400000)
+            ? new Date(new Date(goalStartDate).getTime() + ((weekNum - 1) * 7 + idx) * 86400000)
             : null;
           const dateStr = cellDate ? `${cellDate.getDate()}/${cellDate.getMonth() + 1}` : "";
           const isToday = cellDate ? cellDate.toISOString().split("T")[0] === TODAY_STR : false;
