@@ -147,7 +147,7 @@ export default function WeightTracker() {
                 <g pointerEvents="none">
                   <rect x={tx - 4} y={ty - 2} width="86" height="38" rx="6" fill="var(--surface)" stroke="var(--border)" strokeWidth="1" />
                   <text x={tx} y={ty + 12} fontSize="10" fill={line.color} fontWeight="600">{line.label}: {val}kg</text>
-                  <text x={tx} y={ty + 26} fontSize="9" fill="var(--text-muted)">{entry.measured_at} · {entry.weight_kg}kg total</text>
+                  <text x={tx} y={ty + 26} fontSize="9" fill="var(--text-muted)">{entry.measured_at}</text>
                 </g>
               );
             })()}
