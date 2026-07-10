@@ -25,14 +25,6 @@ interface Debt {
   amount: number;
 }
 
-function calcEqualSettlements(persons: Person[]): { from: string; to: string; amount: number }[] {
-  if (persons.length < 2) return [];
-  const total = persons.reduce((s, p) => s + p.paid, 0);
-  const share = total / persons.length;
-  const balances = persons.map(p => ({ name: p.name, balance: p.paid - share }));
-  return settle(balances);
-}
-
 function calcBillSettlements(persons: Person[], debts: Debt[], billTotal: number): { from: string; to: string; amount: number }[] {
   if (persons.length < 2 || billTotal <= 0) return [];
   const share = billTotal / persons.length;
