@@ -6,9 +6,13 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     ...options,
   });
   if (res.status === 204) return undefined as T;
-  const body = await res.json();
-  if (!res.ok) throw new Error(body.detail ?? "Request failed");
-  return body;
+  const text = await res.text();
+  let body: Record<string, unknown>;
+  try { body = JSON.parse(text); } catch {
+    throw new Error(`Server error (${res.status}): ${text.slice(0, 200)}`);
+  }
+  if (!res.ok) throw new Error(body.detail as string ?? `Request failed (${res.status})`);
+  return body as T;
 }
 
 export interface Goal {

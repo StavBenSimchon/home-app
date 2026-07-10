@@ -56,8 +56,8 @@ Rules:
 async def _call_ai(messages: list[dict]) -> str:
     key = settings.ai_api_key
     if not key:
-        raise ValueError("AI_API_KEY is not set. Set it to your Zen API key from https://opencode.ai/auth")
-    async with httpx.AsyncClient(timeout=300) as client:
+        raise ValueError("AI_API_KEY is not set. Set it to your API key.")
+    async with httpx.AsyncClient(timeout=600) as client:
         try:
             resp = await client.post(
                 f"{settings.ai_base_url}/chat/completions",
