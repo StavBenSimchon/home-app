@@ -11,6 +11,7 @@ const SPINNER = (
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const TODAY_DOW = new Date().getDay();
+const TODAY_STR = new Date().toISOString().split("T")[0];
 
 function getCurrentWeek(startDate: string | null): number {
   if (!startDate) return 1;
@@ -452,7 +453,7 @@ export default function Fitness() {
           {Object.keys(byWeek).length === 0 && <p style={{ color: "var(--text-muted)", marginBottom: "1rem" }}>No activities planned yet.</p>}
 
           {Object.entries(byWeek).sort(([a], [b]) => Number(a) - Number(b)).map(([wn, weekEntries]) => (
-            <WeekCalendar key={wn} weekLabel={`Week ${wn}`} entries={weekEntries}
+            <WeekCalendar key={wn} weekLabel={`Week ${wn}`} weekNum={Number(wn)} goalStartDate={selectedGoal.start_date} entries={weekEntries}
               onToggle={toggleCompleted} onDelete={handleDeleteEntry}
               onOpenWorkout={openWorkout} />
           ))}
@@ -607,8 +608,8 @@ function Stat({ label, value }: { label: string; value: string }) {
   </div>;
 }
 
-function WeekCalendar({ weekLabel, entries, onToggle, onDelete, onOpenWorkout }: {
-  weekLabel: string; entries: PlanEntry[];
+function WeekCalendar({ weekLabel, weekNum, goalStartDate, entries, onToggle, onDelete, onOpenWorkout }: {
+  weekLabel: string; weekNum: number; goalStartDate: string | null; entries: PlanEntry[];
   onToggle: (e: PlanEntry) => void; onDelete: (id: string) => void; onOpenWorkout: (e: PlanEntry) => void;
 }) {
   const flexible = entries.filter(e => e.day_of_week == null);
@@ -616,7 +617,8 @@ function WeekCalendar({ weekLabel, entries, onToggle, onDelete, onOpenWorkout }:
   const completed = entries.filter(e => e.completed).length;
   const total = entries.length;
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
-  const isCurrentWeek = entries.some(e => e.week_number === getCurrentWeek(null));
+  const currentWeek = getCurrentWeek(goalStartDate);
+  const isCurrentWeek = weekNum === currentWeek;
 
   return (
     <div style={{ background: "var(--surface)", border: isCurrentWeek ? "1.5px solid var(--primary)" : "1px solid var(--border)", borderRadius: 14, padding: "1rem", marginBottom: "0.75rem" }}>
@@ -656,9 +658,13 @@ function WeekCalendar({ weekLabel, entries, onToggle, onDelete, onOpenWorkout }:
         {DAYS.map((day, idx) => {
           const dayNum = (idx + 6) % 7;
           const dayEntries = fixed.filter(e => e.day_of_week === dayNum);
-          const isToday = dayNum === TODAY_DOW;
           const dayDone = dayEntries.filter(e => e.completed).length;
           const dayTotal = dayEntries.length;
+          const cellDate = goalStartDate
+            ? new Date(new Date(goalStartDate).getTime() + ((weekNum - 1) * 7 + dayNum) * 86400000)
+            : null;
+          const dateStr = cellDate ? `${cellDate.getDate()}/${cellDate.getMonth() + 1}` : "";
+          const isToday = cellDate ? cellDate.toISOString().split("T")[0] === TODAY_STR : false;
           return (
             <div key={day} className="calendar-day" style={{
               background: isToday ? "color-mix(in srgb, var(--primary) 10%, var(--bg))" : "var(--bg)",
@@ -672,6 +678,7 @@ function WeekCalendar({ weekLabel, entries, onToggle, onDelete, onOpenWorkout }:
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3"><path d="M20 6L9 17l-5-5" /></svg>
                 )}
               </div>
+              {dateStr && <div style={{ fontSize: "0.6rem", color: isToday ? "var(--primary)" : "var(--text-muted)", marginBottom: "0.2rem" }}>{dateStr}</div>}
               {dayEntries.map(e => {
                 const done = e.completed;
                 return (
