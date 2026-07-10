@@ -120,7 +120,6 @@ function EqualSplit({ onBack }: { onBack: () => void }) {
 
   const total = useMemo(() => persons.reduce((s, p) => s + p.paid, 0), [persons]);
   const share = persons.length > 0 ? total / persons.length : 0;
-  const settlements = useMemo(() => calcEqualSettlements(persons), [persons]);
 
   return (
     <div>
