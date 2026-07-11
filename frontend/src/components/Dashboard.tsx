@@ -9,9 +9,15 @@ const apps = [
   },
   {
     title: "Settle Up",
-    description: "Split expenses and settle debts",
+    description: "Split expenses between friends",
     icon: "💰",
     path: "/settle-up",
+  },
+  {
+    title: "Bill Payment",
+    description: "Split bank account charges between people",
+    icon: "🏦",
+    path: "/bill-payment",
   },
 ];
 
