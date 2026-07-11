@@ -1,14 +1,16 @@
-name: Cleanup Container Images
+name: Cleanup Images & Charts
 
 on:
+  schedule:
+    - cron: "0 3 * * 1"
   workflow_dispatch:
     inputs:
       packages:
         description: "Comma-separated package names"
         required: true
-        default: "home-app/backend,home-app/frontend"
+        default: "home-app,home-app/backend,home-app/frontend"
       keep:
-        description: "Number of non-release images to keep"
+        description: "Number of non-release versions to keep"
         required: false
         default: "3"
 
@@ -21,12 +23,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Cleanup old GHCR images
+      - name: Cleanup old GHCR packages
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OWNER: ${{ github.repository_owner }}
           KEEP: ${{ github.event.inputs.keep || '3' }}
-          PACKAGES: ${{ github.event.inputs.packages || 'home-app/backend,home-app/frontend' }}
+          PACKAGES: ${{ github.event.inputs.packages || 'home-app,home-app/backend,home-app/frontend' }}
         run: |
           set -euo pipefail
 
@@ -36,7 +38,7 @@ jobs:
             PKG=$(echo "$PKG" | xargs)
             ENCODED=$(echo "$PKG" | sed 's/\//%2F/g')
 
-            echo "Processing $PKG"
+            echo "=== Processing $PKG ==="
 
             # Try org endpoint first, then user
             URL="https://api.github.com/orgs/$OWNER/packages/container/$ENCODED/versions?per_page=100"
@@ -82,14 +84,12 @@ jobs:
               continue
             fi
 
+            echo "Deleting $(echo "$DELETE_IDS" | wc -w) versions..."
             for ID in $DELETE_IDS; do
-              echo "Deleting version $ID"
-
+              echo "  Deleting $ID"
               curl -s -X DELETE \
                 -H "Authorization: Bearer $GITHUB_TOKEN" \
                 -H "Accept: application/vnd.github+json" \
                 "${URL%/versions*}/versions/$ID"
-
-              echo
             done
           done
