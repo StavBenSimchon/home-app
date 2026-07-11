@@ -307,12 +307,17 @@ function PaymentSplit({ onBack }: { onBack: () => void }) {
   const data = useMemo(() => {
     if (persons.length === 0 || total <= 0) return null;
     const share = total / persons.length;
-    const rows = persons.map(p => {
+    const raw = persons.map(p => {
       const paid = p.amounts.reduce((a, b) => a + b, 0);
       const diff = paid - share;
-      const transfer = Math.max(0, Math.round((share - diff) * 100) / 100);
-      return { ...p, paid, share, diff, transfer };
+      return { ...p, paid, share, diff, rawTransfer: Math.round((2 * share - paid) * 100) / 100 };
     });
+    const totalRaw = raw.reduce((s, r) => s + r.rawTransfer, 0);
+    const scale = totalRaw !== 0 ? total / totalRaw : 1;
+    const rows = raw.map(r => ({
+      ...r,
+      transfer: Math.round(r.rawTransfer * scale * 100) / 100,
+    }));
     return { share, rows, totalTransfers: rows.reduce((s, r) => s + r.transfer, 0) };
   }, [persons, total]);
 
