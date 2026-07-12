@@ -407,29 +407,29 @@ export default function Fitness() {
       {/* ---------- Calendar ---------- */}
       {selectedGoal && (() => {
         const currentWeek = getCurrentWeek(selectedGoal.start_date);
-        const todayEntries = entries.filter(e => e.day_of_week === TODAY_DOW_DB && e.week_number === currentWeek && !e.completed);
-        const todayDone = entries.filter(e => e.day_of_week === TODAY_DOW_DB && e.week_number === currentWeek && e.completed);
-        const todayTotal = entries.filter(e => e.day_of_week === TODAY_DOW_DB && e.week_number === currentWeek);
+        const todayEntries = entries.filter(e => e.day_of_week === TODAY_DOW_DB && e.week_number === currentWeek);
+        const todayDone = todayEntries.filter(e => e.completed);
+        const todayPending = todayEntries.filter(e => !e.completed);
         return (
           <>
             {/* Today's Workout */}
-            {todayTotal.length > 0 && (
+            {todayEntries.length > 0 && (
               <div style={{ background: "linear-gradient(135deg, var(--primary), color-mix(in srgb, var(--primary) 80%, #000))", borderRadius: 16, padding: "1.25rem", marginBottom: "1.5rem", color: "#fff" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
                   <div>
                     <div style={{ fontSize: "0.75rem", opacity: 0.8, textTransform: "uppercase", letterSpacing: "0.05em" }}>Today</div>
                     <div style={{ fontSize: "1.15rem", fontWeight: 700 }}>{DAYS[TODAY_DOW]} {TODAY_DATE_STR}, Week {currentWeek}</div>
                   </div>
-                  <div style={{ fontSize: "2rem", fontWeight: 700 }}>{todayDone.length}/{todayTotal.length}</div>
+                  <div style={{ fontSize: "2rem", fontWeight: 700 }}>{todayDone.length}/{todayEntries.length}</div>
                 </div>
-                {todayEntries.length === 0 ? (
+                {todayPending.length === 0 ? (
                   <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.6rem 0.8rem", background: "rgba(255,255,255,0.15)", borderRadius: 10, fontSize: "0.9rem", fontWeight: 500 }}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5" /></svg>
                     All done for today!
                   </div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
-                    {todayEntries.map(e => (
+                    {todayPending.map(e => (
                       <div key={e.id} onClick={() => openWorkout(e)}
                         style={{ display: "flex", alignItems: "center", gap: "0.6rem", padding: "0.55rem 0.75rem", background: "rgba(255,255,255,0.12)", borderRadius: 10, cursor: "pointer", transition: "background 0.15s", backdropFilter: "blur(4px)" }}>
                         <div onClick={(ev) => { ev.stopPropagation(); toggleCompleted(e); }}
