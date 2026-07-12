@@ -10,9 +10,11 @@ const SPINNER = (
 );
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const TODAY_DOW = new Date().getDay();
 const _now = new Date();
+const TODAY_DOW = _now.getDay();
 const TODAY_STR = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, "0")}-${String(_now.getDate()).padStart(2, "0")}`;
+const TODAY_DOW_DB = (TODAY_DOW + 6) % 7;
+const TODAY_DATE_STR = `${_now.getDate()}/${_now.getMonth() + 1}`;
 
 function getCurrentWeek(startDate: string | null): number {
   if (!startDate) return 1;
@@ -405,9 +407,9 @@ export default function Fitness() {
       {/* ---------- Calendar ---------- */}
       {selectedGoal && (() => {
         const currentWeek = getCurrentWeek(selectedGoal.start_date);
-        const todayEntries = entries.filter(e => e.day_of_week === TODAY_DOW && e.week_number === currentWeek && !e.completed);
-        const todayDone = entries.filter(e => e.day_of_week === TODAY_DOW && e.week_number === currentWeek && e.completed);
-        const todayTotal = entries.filter(e => e.day_of_week === TODAY_DOW && e.week_number === currentWeek);
+        const todayEntries = entries.filter(e => e.day_of_week === TODAY_DOW_DB && e.week_number === currentWeek && !e.completed);
+        const todayDone = entries.filter(e => e.day_of_week === TODAY_DOW_DB && e.week_number === currentWeek && e.completed);
+        const todayTotal = entries.filter(e => e.day_of_week === TODAY_DOW_DB && e.week_number === currentWeek);
         return (
           <>
             {/* Today's Workout */}
@@ -416,7 +418,7 @@ export default function Fitness() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
                   <div>
                     <div style={{ fontSize: "0.75rem", opacity: 0.8, textTransform: "uppercase", letterSpacing: "0.05em" }}>Today</div>
-                    <div style={{ fontSize: "1.15rem", fontWeight: 700 }}>{DAYS[TODAY_DOW]}, Week {currentWeek}</div>
+                    <div style={{ fontSize: "1.15rem", fontWeight: 700 }}>{DAYS[TODAY_DOW]} {TODAY_DATE_STR}, Week {currentWeek}</div>
                   </div>
                   <div style={{ fontSize: "2rem", fontWeight: 700 }}>{todayDone.length}/{todayTotal.length}</div>
                 </div>
