@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Login</title>
+	<style>
+		* { margin: 0; padding: 0; box-sizing: border-box; }
+		body { font-family: system-ui, -apple-system, sans-serif; background: #0f0f0f; color: #e0e0e0; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+		.login-card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 2rem; width: 100%; max-width: 360px; }
+		h1 { font-size: 1.5rem; margin-bottom: 1.5rem; text-align: center; }
+		input { width: 100%; padding: 0.75rem; background: #0f0f0f; border: 1px solid #2a2a2a; border-radius: 10px; color: #e0e0e0; font-size: 0.9rem; margin-bottom: 0.75rem; }
+		input:focus { outline: none; border-color: #6366f1; }
+		button { width: 100%; padding: 0.75rem; background: #6366f1; color: #fff; border: none; border-radius: 10px; font-size: 0.9rem; font-weight: 600; cursor: pointer; }
+		button:hover { background: #5457e5; }
+		button:disabled { opacity: 0.5; }
+		.error { color: #ef4444; font-size: 0.82rem; margin-top: 0.5rem; display: none; }
+	</style>
+</head>
+<body>
+	<div class="login-card">
+		<h1>🔐 Login</h1>
+		<form id="form">
+			<input type="text" id="username" placeholder="Username" autocomplete="username" required />
+			<input type="password" id="password" placeholder="Password" autocomplete="current-password" required />
+			<button type="submit" id="btn">Login</button>
+		</form>
+		<p class="error" id="err"></p>
+	</div>
+	<script>
+		document.getElementById("form").addEventListener("submit", async (e) => {
+			e.preventDefault();
+			const btn = document.getElementById("btn");
+			const err = document.getElementById("err");
+			btn.disabled = true;
+			err.style.display = "none";
+			try {
+				const res = await fetch("/login", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						username: document.getElementById("username").value,
+						password: document.getElementById("password").value,
+					}),
+				});
+				const data = await res.json();
+				if (res.ok && data.token) {
+					localStorage.setItem("token", data.token);
+					window.location.href = "/?token=" + data.token;
+				} else {
+					err.textContent = data.error || "Login failed";
+					err.style.display = "block";
+				}
+			} catch (ex) {
+				err.textContent = "Network error";
+				err.style.display = "block";
+			}
+			btn.disabled = false;
+		});
+	</script>
+</body>
+</html>
