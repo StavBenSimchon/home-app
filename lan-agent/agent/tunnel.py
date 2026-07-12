@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import ssl
 import uuid
 
 import httpx
@@ -17,9 +18,31 @@ class TunnelAgent:
         self.s = settings
         self.agent_id = settings.AGENT_ID or f"agent-{uuid.uuid4().hex[:8]}"
         self.delay = settings.RECONNECT_DELAY
+        self.services = settings.services
+        self.ssl_ctx = self._build_ssl_context()
+
+    def _build_ssl_context(self) -> ssl.SSLContext | None:
+        if not self.s.CERT_FILE or not self.s.KEY_FILE:
+            log.warning("no client cert configured — mTLS disabled")
+            return None
+
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+        if self.s.CA_FILE:
+            ctx.load_verify_locations(self.s.CA_FILE)
+            log.info("loaded ca cert: %s", self.s.CA_FILE)
+        else:
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            log.warning("no ca cert — gateway cert will not be verified")
+
+        ctx.load_cert_chain(certfile=self.s.CERT_FILE, keyfile=self.s.KEY_FILE)
+        log.info("mTLS enabled: cert=%s", self.s.CERT_FILE)
+        return ctx
 
     async def start(self):
         log.info("starting lan agent: %s", self.agent_id)
+        log.info("services: %s", {k: v for k, v in self.services.items()})
         while True:
             try:
                 await self._connect()
@@ -30,13 +53,12 @@ class TunnelAgent:
 
     async def _connect(self):
         headers = {"X-Agent-ID": self.agent_id}
-        if self.s.AGENT_TOKEN:
-            headers["Authorization"] = f"Bearer {self.s.AGENT_TOKEN}"
 
         log.info("connecting to %s", self.s.GATEWAY_URL)
         async with websockets.connect(
             self.s.GATEWAY_URL,
             additional_headers=headers,
+            ssl=self.ssl_ctx,
             ping_interval=30,
             ping_timeout=10,
         ) as ws:
@@ -57,6 +79,7 @@ class TunnelAgent:
 
         data = wrapper["data"]
         req_id = data["id"]
+        service = data.get("service", "")
 
         try:
             resp = await self._forward(data)
@@ -70,10 +93,25 @@ class TunnelAgent:
             }
 
         await ws.send(json.dumps({"type": "response", "data": resp}))
-        log.info("request %s %s → %d", data["method"], data["path"], resp["status"])
+        log.info("%s %s → service:%s → %d", data["method"], data["path"], service, resp["status"])
 
     async def _forward(self, req: dict) -> dict:
-        url = f"{self.s.LOCAL_URL}{req['path']}"
+        service = req.get("service", "")
+        base_url = self.services.get(service)
+
+        if not base_url:
+            return {
+                "id": req["id"],
+                "status": 404,
+                "headers": {"Content-Type": "application/json"},
+                "body": list(json.dumps({"error": f"unknown service: {service}"}).encode()),
+            }
+
+        path = req.get("path", "/")
+        if not path.startswith("/"):
+            path = "/" + path
+
+        url = f"{base_url}{path}"
         headers = {
             k: v for k, v in req.get("headers", {}).items()
             if k.lower() not in ("host", "transfer-encoding", "connection")

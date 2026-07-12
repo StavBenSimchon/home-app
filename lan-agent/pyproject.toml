@@ -1,7 +1,7 @@
 [project]
 name = "lan-agent"
 version = "0.1.0"
-description = "Reverse tunnel agent - connects to cloud gateway and forwards requests to local app"
+description = "Reverse tunnel agent - connects to cloud gateway via mTLS WSS and forwards requests to LAN services"
 requires-python = ">=3.11"
 dependencies = [
     "websockets>=14.0",

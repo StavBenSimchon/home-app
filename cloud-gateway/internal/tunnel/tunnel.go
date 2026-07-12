@@ -1,7 +1,12 @@
 package tunnel
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"sync"
@@ -12,6 +17,7 @@ import (
 
 type Request struct {
 	ID      string            `json:"id"`
+	Service string            `json:"service"`
 	Method  string            `json:"method"`
 	Path    string            `json:"path"`
 	Headers map[string]string `json:"headers"`
@@ -31,9 +37,9 @@ type wsMessage struct {
 }
 
 type Agent struct {
-	ID   string
-	Conn *websocket.Conn
-	mu   sync.Mutex
+	ID      string
+	Conn    *websocket.Conn
+	mu      sync.Mutex
 	pending sync.Map
 }
 
@@ -57,19 +63,47 @@ func (a *Agent) resolvePending(resp *Response) {
 }
 
 type Manager struct {
-	mu     sync.Mutex
-	agents map[string]*Agent
+	mu        sync.Mutex
+	agents    map[string]*Agent
+	tlsConfig *tls.Config
 }
 
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+func NewManager(caCertPath string) (*Manager, error) {
+	m := &Manager{agents: make(map[string]*Agent)}
+
+	if caCertPath != "" {
+		caCert, err := ioutil.ReadFile(caCertPath)
+		if err != nil {
+			return nil, fmt.Errorf("read ca cert: %w", err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(caCert) {
+			return nil, errors.New("failed to parse ca cert")
+		}
+		m.tlsConfig = &tls.Config{
+			ClientCAs:  pool,
+			ClientAuth: tls.RequireAndVerifyClientCert,
+		}
+		log.Println("mTLS enabled for agent connections")
+	}
+
+	return m, nil
 }
 
-func NewManager() *Manager {
-	return &Manager{agents: make(map[string]*Agent)}
+func (m *Manager) upgrader() websocket.Upgrader {
+	return websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool { return true },
+		TLSClientConfig: m.tlsConfig,
+	}
 }
 
 func (m *Manager) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
+	if m.tlsConfig != nil && r.TLS == nil {
+		http.Error(w, "wss requires tls", http.StatusBadRequest)
+		return
+	}
+
+	upgrader := m.upgrader()
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("upgrade error: %v", err)
@@ -78,7 +112,11 @@ func (m *Manager) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	id := r.Header.Get("X-Agent-ID")
 	if id == "" {
-		id = "agent-" + time.Now().Format("20060102150405")
+		if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
+			id = r.TLS.PeerCertificates[0].Subject.CommonName
+		} else {
+			id = "agent-" + time.Now().Format("20060102150405")
+		}
 	}
 
 	agent := &Agent{ID: id, Conn: conn}
