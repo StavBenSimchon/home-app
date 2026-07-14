@@ -41,7 +41,7 @@ func Load() *Config {
 		AllowedOrigin: getEnv("ALLOWED_ORIGIN", "*"),
 	}
 
-	routeStr := getEnv("ROUTES", "/auth=auth-service,/home-app=home-app")
+	routeStr := getEnv("ROUTES", "/home-app=home-app")
 	for _, r := range strings.Split(routeStr, ",") {
 		parts := strings.SplitN(strings.TrimSpace(r), "=", 2)
 		if len(parts) == 2 {

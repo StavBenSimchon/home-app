@@ -10,3 +10,6 @@ dependencies = [
 
 [project.scripts]
 lan-agent = "agent.main:main"
+
+[tool.setuptools.packages.find]
+include = ["agent", "config"]

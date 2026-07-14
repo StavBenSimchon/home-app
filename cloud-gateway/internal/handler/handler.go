@@ -25,7 +25,7 @@ type Handler struct {
 	proxyLimiter  *middleware.RateLimiter
 }
 
-func New(a *auth.Auth, tm *tunnel.Manager, routes []config.Route, maxBody int64, origin, loginRate, proxyRate, rateWindow int) *Handler {
+func New(a *auth.Auth, tm *tunnel.Manager, routes []config.Route, maxBody int64, origin string, loginRate, proxyRate, rateWindow int) *Handler {
 	return &Handler{
 		auth:          a,
 		tm:            tm,
@@ -39,10 +39,12 @@ func New(a *auth.Auth, tm *tunnel.Manager, routes []config.Route, maxBody int64,
 
 func (h *Handler) Routes() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/login", h.loginLimiter.Middleware(http.HandlerFunc(h.HandleLogin)))
+	loginHandler := h.loginLimiter.Middleware(http.HandlerFunc(h.HandleLogin))
+	proxyHandler := h.proxyLimiter.Middleware(http.HandlerFunc(h.AuthMiddleware(h.HandleProxy)))
+	mux.Handle("/login", loginHandler)
 	mux.HandleFunc("/ws", h.tm.HandleWebSocket)
 	mux.HandleFunc("/health", h.HandleHealth)
-	mux.HandleFunc("/", h.proxyLimiter.Middleware(http.HandlerFunc(h.AuthMiddleware(h.HandleProxy))))
+	mux.Handle("/", proxyHandler)
 	return h.withSecurityHeaders(mux)
 }
 
@@ -163,6 +165,11 @@ func (h *Handler) matchRoute(path string) (*config.Route, string) {
 }
 
 func (h *Handler) HandleProxy(w http.ResponseWriter, r *http.Request) {
+	if strings.HasPrefix(r.URL.Path, "/auth/") || r.URL.Path == "/auth" {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
+
 	if h.tm.AgentCount() == 0 {
 		http.Error(w, `{"error":"no agents connected"}`, http.StatusServiceUnavailable)
 		return
