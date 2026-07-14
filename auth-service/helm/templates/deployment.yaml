@@ -29,7 +29,7 @@ spec:
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "auth-service.fullname" . }}-secret
-                  key: jwt-secret
+                  name: {{ .Values.jwtSecretName }}
+                  key: {{ .Values.jwtSecretKey }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

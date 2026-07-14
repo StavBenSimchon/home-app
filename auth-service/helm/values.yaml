@@ -9,6 +9,7 @@ port: 8000
 database:
   url: "postgresql+asyncpg://homeapp:homeapp_dev@home-app-postgresql:5432/homeapp"
 
-jwtSecret: "change-me-in-production"
+jwtSecretName: "auth-service-secret"
+jwtSecretKey: "jwt-secret"
 
 resources: {}
