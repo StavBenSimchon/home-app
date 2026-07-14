@@ -66,10 +66,14 @@ type Manager struct {
 	mu        sync.Mutex
 	agents    map[string]*Agent
 	tlsConfig *tls.Config
+	maxAgents int
 }
 
-func NewManager(caCertPath string) (*Manager, error) {
-	m := &Manager{agents: make(map[string]*Agent)}
+func NewManager(caCertPath string, maxAgents int) (*Manager, error) {
+	m := &Manager{
+		agents:    make(map[string]*Agent),
+		maxAgents: maxAgents,
+	}
 
 	if caCertPath != "" {
 		caCert, err := ioutil.ReadFile(caCertPath)
@@ -90,20 +94,21 @@ func NewManager(caCertPath string) (*Manager, error) {
 	return m, nil
 }
 
-func (m *Manager) upgrader() websocket.Upgrader {
-	return websocket.Upgrader{
-		CheckOrigin: func(r *http.Request) bool { return true },
-		TLSClientConfig: m.tlsConfig,
-	}
-}
-
 func (m *Manager) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
-	if m.tlsConfig != nil && r.TLS == nil {
-		http.Error(w, "wss requires tls", http.StatusBadRequest)
-		return
+	if m.tlsConfig != nil {
+		if r.TLS == nil {
+			http.Error(w, "wss requires tls", http.StatusBadRequest)
+			return
+		}
+		if len(r.TLS.PeerCertificates) == 0 {
+			http.Error(w, "client certificate required", http.StatusUnauthorized)
+			return
+		}
 	}
 
-	upgrader := m.upgrader()
+	upgrader := websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool { return true },
+	}
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("upgrade error: %v", err)
@@ -119,9 +124,16 @@ func (m *Manager) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	agent := &Agent{ID: id, Conn: conn}
-
 	m.mu.Lock()
+	if len(m.agents) >= m.maxAgents {
+		m.mu.Unlock()
+		conn.Close()
+		log.Printf("agent %s rejected: max agents reached (%d)", id, m.maxAgents)
+		http.Error(w, "max agents reached", http.StatusServiceUnavailable)
+		return
+	}
+
+	agent := &Agent{ID: id, Conn: conn}
 	m.agents[id] = agent
 	m.mu.Unlock()
 
@@ -135,12 +147,17 @@ func (m *Manager) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		log.Printf("agent disconnected: %s", id)
 	}()
 
+	conn.SetReadDeadline(time.Now().Add(90 * time.Second))
+	defer conn.SetReadDeadline(time.Time{})
+
 	for {
 		_, msg, err := conn.ReadMessage()
 		if err != nil {
 			log.Printf("read error from %s: %v", id, err)
 			return
 		}
+
+		conn.SetReadDeadline(time.Now().Add(90 * time.Second))
 
 		var wrapper wsMessage
 		if err := json.Unmarshal(msg, &wrapper); err != nil {

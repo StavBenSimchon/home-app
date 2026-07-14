@@ -1,83 +1,89 @@
 # Cloud Gateway
 
-Go-based API gateway with user authentication (Turso/SQLite), mTLS agent verification, and route-based proxying to LAN agents.
+Stateless Go API gateway. No database. JWT signing/verification + WebSocket tunnel relay + rate limiting + security headers.
 
 ## Architecture
 
 ```
-Browser ──HTTPS (Let's Encrypt)──→ Gateway ──WSS+mTLS (self-signed CA)──→ LAN Agent → LAN Services
+Browser ──HTTPS──→ Gateway (JWT + rate limit + security) ──WSS+mTLS──→ LAN Agent → Services
 ```
+
+**The gateway has NO database connection.** It only:
+1. Verifies JWT tokens
+2. Proxies requests to LAN agent via WebSocket tunnel
+3. Signs JWT tokens after successful login (login is proxied to auth-service)
 
 ## Features
 
-- User authentication via Turso (SQLite) with bcrypt + JWT
+- Stateless (no DB, no credentials on the VPS)
+- JWT auth (signs tokens after auth-service confirms login)
 - mTLS for agent connections (self-signed CA)
+- Rate limiting (5/min on login, 1000/min on proxy)
+- Request size limits (10MB max body, 4KB login)
+- Security headers (HSTS, X-Frame-Options, CSP, etc.)
+- CORS support
+- Agent connection limit (max 2 agents)
 - Route-based proxying with prefix stripping
-- WebSocket tunnel with request/response correlation
-- TLS support (Let's Encrypt or any cert)
+- TLS support (Let's Encrypt)
 
 ## Setup
 
-### 1. Environment Variables
+### Environment Variables
 
 ```bash
 export LISTEN_ADDR=:8443
-export TLS_CERT=/path/to/fullchain.pem      # Let's Encrypt
-export TLS_KEY=/path/to/privkey.pem         # Let's Encrypt
-export TURSO_URL=libsql://your-db.turso.io
-export TURSO_TOKEN=your-turso-token
+export TLS_CERT=/path/to/fullchain.pem
+export TLS_KEY=/path/to/privkey.pem
 export JWT_SECRET=your-jwt-secret
-export AGENT_CA_CERT=/path/to/ca.crt        # Self-signed CA for agent mTLS
-export ROUTES=/home-app=home-app,/grafana=grafana,/prometheus=prometheus
+export AGENT_CA_CERT=/path/to/ca.crt
+export ALLOWED_ORIGIN=https://yourdomain.com
+export ROUTES=/auth=auth-service,/home-app=home-app,/grafana=grafana
 ```
 
-### 2. Create Users
-
-```bash
-go run cmd/gateway/main.go -create-user admin:yourpassword
-```
-
-### 3. Run
+### Run
 
 ```bash
 go run cmd/gateway/main.go
 ```
 
-## Routing
+## How Login Works
 
-Routes are configured via `ROUTES` env var (comma-separated `prefix=service`):
+```
+Browser → POST /login (username, password)
+  → Gateway forwards to LAN agent → auth-service → checks password in PostgreSQL
+  → Returns {user_id, username, role}
+  → Gateway signs JWT with JWT_SECRET
+  → Returns {token: "eyJ..."} to browser
+```
+
+The gateway never sees the password hash — it only gets the auth-service response.
+
+## Routing
 
 | Browser URL | Service | Agent receives |
 |-------------|---------|---------------|
+| `/auth/login` | `auth-service` | `POST /login` |
 | `/home-app/api/goals` | `home-app` | `GET /api/goals` |
 | `/grafana/dashboards` | `grafana` | `GET /dashboards` |
-| `/prometheus/api/v1` | `prometheus` | `GET /api/v1` |
-
-The gateway strips the prefix and tags the service name. The agent looks up the service URL and forwards.
 
 ## API
 
-| Endpoint | Method | Auth | Description |
-|----------|--------|------|-------------|
-| `/login` | GET | None | Login page |
-| `/login` | POST | None | Authenticate → JWT |
-| `/health` | GET | None | Gateway health + agent count |
-| `/ws` | GET | mTLS | WebSocket for LAN agents |
-| `/<service>/*` | ALL | JWT | Proxy to LAN agent |
+| Endpoint | Auth | Rate Limit | Description |
+|----------|------|------------|-------------|
+| `/login` | None | 5/min | Login page / POST credentials |
+| `/health` | None | None | Health check |
+| `/ws` | mTLS | None | WebSocket for LAN agents |
+| `/<service>/*` | JWT | 1000/min | Proxy to LAN agent |
 
 ## Generating mTLS Certificates
 
 ```bash
-# 1. Create private CA
+# CA
 openssl genrsa -out ca.key 4096
 openssl req -x509 -new -key ca.key -days 3650 -out ca.crt -subj "/CN=Home App CA"
 
-# 2. Create agent client cert
+# Agent client cert
 openssl genrsa -out agent.key 2048
 openssl req -new -key agent.key -out agent.csr -subj "/CN=lan-agent"
 openssl x509 -req -in agent.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out agent.crt -days 365
-
-# 3. Deploy
-# Gateway:  ca.crt → AGENT_CA_CERT
-# Agent:    agent.crt → CERT_FILE, agent.key → KEY_FILE, ca.crt → CA_FILE
 ```

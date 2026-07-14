@@ -1,81 +1,62 @@
 package auth
 
 import (
-	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
-
-	"github.com/stavbensimchon/cloud-gateway/internal/store"
 )
 
-var ErrInvalidCredentials = errors.New("invalid credentials")
-
 type Auth struct {
-	store     *store.Store
 	jwtSecret string
 }
 
-func New(s *store.Store, jwtSecret string) *Auth {
-	return &Auth{store: s, jwtSecret: jwtSecret}
+func New(jwtSecret string) *Auth {
+	return &Auth{jwtSecret: jwtSecret}
 }
 
-func (a *Auth) Login(username, password string) (string, error) {
-	id, hash, err := a.store.GetUser(username)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", ErrInvalidCredentials
-		}
-		return "", err
-	}
+type Claims struct {
+	Sub  string `json:"sub"`
+	Usr  string `json:"usr"`
+	Role string `json:"role"`
+	jwt.RegisteredClaims
+}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)); err != nil {
-		return "", ErrInvalidCredentials
-	}
-
-	claims := jwt.MapClaims{
-		"sub": id,
-		"usr": username,
-		"exp": time.Now().Add(7 * 24 * time.Hour).Unix(),
+func (a *Auth) SignToken(userID, username, role string) (string, error) {
+	claims := Claims{
+		Sub:  userID,
+		Usr:  username,
+		Role: role,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signed, err := token.SignedString([]byte(a.jwtSecret))
-	if err != nil {
-		return "", fmt.Errorf("sign token: %w", err)
-	}
-
-	return signed, nil
+	return token.SignedString([]byte(a.jwtSecret))
 }
 
-func (a *Auth) VerifyToken(tokenStr string) (username string, err error) {
-	token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (any, error) {
+func (a *Auth) VerifyToken(tokenStr string) (*Claims, error) {
+	token, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected method: %v", t.Header["alg"])
 		}
 		return []byte(a.jwtSecret), nil
 	})
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	claims, ok := token.Claims.(jwt.MapClaims)
+	claims, ok := token.Claims.(*Claims)
 	if !ok || !token.Valid {
-		return "", errors.New("invalid token")
+		return nil, errors.New("invalid token")
 	}
 
-	username, _ = claims["usr"].(string)
-	return username, nil
+	return claims, nil
 }
 
-func (a *Auth) CreateUser(username, password string) error {
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return err
-	}
-	id := uuid.NewString()
-	return a.store.CreateUser(id, username, string(hash))
+func (a *Auth) ExtractToken(header string) string {
+	return strings.TrimPrefix(header, "Bearer ")
 }
