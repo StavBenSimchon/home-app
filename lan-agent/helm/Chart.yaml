@@ -1,0 +1,6 @@
+apiVersion: v2
+name: lan-agent
+description: Reverse tunnel agent for cloud gateway
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

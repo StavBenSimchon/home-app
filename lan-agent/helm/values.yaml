@@ -1,0 +1,23 @@
+image:
+  repository: ghcr.io/stavbensimchon/lan-agent
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+gateway:
+  url: "wss://gateway.example.com:8443/ws"
+
+agentId: ""
+
+certs:
+  existingSecret: lan-agent-certs
+  certFile: agent.crt
+  keyFile: agent.key
+  caFile: ca.crt
+
+services:
+  auth-service: "http://auth-service:8000"
+  home-app: "http://home-app-backend:8000"
+
+resources: {}

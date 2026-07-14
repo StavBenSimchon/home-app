@@ -1,0 +1,14 @@
+image:
+  repository: ghcr.io/stavbensimchon/auth-service
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+port: 8000
+
+database:
+  url: "postgresql+asyncpg://homeapp:homeapp_dev@home-app-postgresql:5432/homeapp"
+
+jwtSecret: "change-me-in-production"
+
+resources: {}
