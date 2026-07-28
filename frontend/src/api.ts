@@ -100,17 +100,18 @@ export const api = {
       method: "PATCH", body: JSON.stringify(data),
     }),
 
-  // AI
+  // AI — async job pattern: POST enqueues the work (202 + job_id),
+  // poll the result with pollAiJob (AI calls can take minutes).
   generateQuestions: (prompt: string) =>
-    request<{ questions: string[] }>("/ai/questions", {
+    request<{ job_id: string }>("/ai/questions", {
       method: "POST", body: JSON.stringify({ prompt }),
     }),
   generatePlan: (prompt: string, qa: { question: string; answer: string }[]) =>
-    request<{ goal: Goal; entries: PlanEntry[] }>("/ai/plan", {
+    request<{ job_id: string }>("/ai/plan", {
       method: "POST", body: JSON.stringify({ prompt, qa }),
     }),
   continuePlan: (goalId: string, prompt: string, finalize: boolean, history?: { role: string; text: string }[]) =>
-    request<{ type: string; message?: string; goal?: Goal; entries?: PlanEntry[] }>("/ai/continue", {
+    request<{ job_id: string }>("/ai/continue", {
       method: "POST", body: JSON.stringify({ goal_id: goalId, prompt, finalize, history: history ?? [] }),
     }),
 
@@ -123,3 +124,25 @@ export const api = {
   deleteWeight: (id: string) =>
     request<void>(`/weight/${id}`, { method: "DELETE" }),
 };
+
+export interface AiJob<T> {
+  status: "pending" | "done" | "error";
+  result: T | null;
+  error: string | null;
+}
+
+export interface QuestionsResult { questions: string[] }
+export interface PlanResult { goal: Goal; entries: PlanEntry[] }
+export interface ContinueResult { type: string; message?: string; goal?: Goal; entries?: PlanEntry[] }
+
+// Polls an AI job until it finishes. 300 attempts * 2s = up to 10 minutes,
+// matching the backend's AI client timeout.
+export async function pollAiJob<T>(jobId: string, intervalMs = 2000, maxAttempts = 300): Promise<T> {
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise(r => setTimeout(r, intervalMs));
+    const job = await request<AiJob<T>>(`/ai/jobs/${jobId}`);
+    if (job.status === "done") return job.result as T;
+    if (job.status === "error") throw new Error(job.error ?? "AI job failed");
+  }
+  throw new Error("AI job timed out");
+}

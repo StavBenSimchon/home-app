@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, type Goal, type PlanEntry, type Exercise } from "../api";
+import { api, pollAiJob, type Goal, type PlanEntry, type Exercise, type QuestionsResult, type PlanResult, type ContinueResult } from "../api";
 import WeightTracker from "./WeightTracker";
 
 const SPINNER = (
@@ -77,7 +77,8 @@ export default function Fitness() {
     setRefineMessages(prev => [...prev, { role: "user", text: msg }]);
     setRefinePending(true);
     try {
-      const res = await api.continuePlan(selectedGoalId, msg, false, history);
+      const { job_id } = await api.continuePlan(selectedGoalId, msg, false, history);
+      const res = await pollAiJob<ContinueResult>(job_id);
       if (res.message) setRefineMessages(prev => [...prev, { role: "assistant", text: res.message! }]);
     } catch (err: unknown) {
       setRefineMessages(prev => [...prev, { role: "assistant", text: err instanceof Error ? err.message : "Error" }]);
@@ -92,7 +93,8 @@ export default function Fitness() {
     setRefinePending(true);
     setRefineMessages(prev => [...prev, { role: "user", text: "Finish and update the plan." }]);
     try {
-      const res = await api.continuePlan(selectedGoalId, lastMsg, true, history);
+      const { job_id } = await api.continuePlan(selectedGoalId, lastMsg, true, history);
+      const res = await pollAiJob<ContinueResult>(job_id);
       if (res.type === "finalized") {
         await load();
         await loadEntries(selectedGoalId);
@@ -128,7 +130,8 @@ export default function Fitness() {
     setChatPending(true);
     setChatError("");
     try {
-      const res = await api.generateQuestions(chatInput);
+      const { job_id } = await api.generateQuestions(chatInput);
+      const res = await pollAiJob<QuestionsResult>(job_id);
       setAiQuestions(res.questions);
       setChatStep("questions");
       setQIdx(0);
@@ -151,7 +154,8 @@ export default function Fitness() {
     } else {
       setChatStep("generating");
       try {
-        const result = await api.generatePlan(chatInput, updated);
+        const { job_id } = await api.generatePlan(chatInput, updated);
+        const result = await pollAiJob<PlanResult>(job_id);
         setChatStep("done");
         await load();
         if (result.goal) setSelectedGoalId(result.goal.id);
