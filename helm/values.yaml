@@ -66,7 +66,8 @@ frontend:
 # -- Gateway API HTTPRoute configuration
 httproute:
   hostname: home-app.example.com
-  # -- Backend request timeout (e.g. "180s", "300s")
+  # -- Backend upstream timeout, applied via ProxySettingsPolicy (e.g. "180s", "300s").
+  # NGINX Gateway Fabric ignores HTTPRoute spec.rules[].timeouts, so the policy is required.
   backendTimeout: ""
   # -- Gateway ref (namespace/name)
   parentRef:

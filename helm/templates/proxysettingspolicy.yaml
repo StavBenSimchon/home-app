@@ -1,0 +1,14 @@
+{{- if .Values.httproute.backendTimeout }}
+apiVersion: gateway.nginx.org/v1alpha1
+kind: ProxySettingsPolicy
+metadata:
+  name: {{ include "home-app.fullname" . }}-backend-timeout
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: {{ include "home-app.fullname" . }}
+  timeout:
+    read: {{ .Values.httproute.backendTimeout | quote }}
+    send: {{ .Values.httproute.backendTimeout | quote }}
+{{- end }}

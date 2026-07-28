@@ -73,7 +73,7 @@ async def _call_ai(messages: list[dict]) -> str:
             )
         except httpx.ReadTimeout:
             raise RuntimeError(
-                f"AI API did not respond within 300s (model: {settings.ai_model}). "
+                f"AI API did not respond within 600s (model: {settings.ai_model}). "
                 "The free model may be overloaded. Try again later or switch to a different model."
             )
         if not resp.is_success:
