@@ -11,7 +11,7 @@ Multi-service "home-app" platform. The fitness module is an **AI coaching app**:
 ## Backend
 - Use `nerdctl compose -p home-app up -d db` for the DB.
 - Every feature must have a test; `tests/conftest.py` requires `DATABASE_URL` (Postgres). To run tests, run pytest inside the `backend` image/container with `DATABASE_URL` set in `.env`.
-- `routers/__init__.py` aggregates routers with **no `/api` prefix** — the Vite dev proxy strips `/api`.
+- `routers/__init__.py` aggregates routers without a prefix. `main.py` mounts them at `/` and `/api`: local Vite/nginx strips `/api`, while the Kubernetes Gateway forwards it unchanged.
 - New tables/columns are added as idempotent DDL in `database.py:init_db` (project convention; not alembic).
 - Cross-dialect SQL types use `app/models/types.py` (GUID, JSONBCompat).
 - AI endpoints call OpenCode Zen (`AI_*` env vars).

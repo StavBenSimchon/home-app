@@ -33,6 +33,15 @@ async def test_list_goals(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_api_prefixed_routes_for_kubernetes_gateway(client: AsyncClient):
+    created = await client.post("/api/goals/", json={"title": "Gateway Goal"})
+    assert created.status_code == 201
+    listed = await client.get("/api/goals/")
+    assert listed.status_code == 200
+    assert any(goal["id"] == created.json()["id"] for goal in listed.json())
+
+
+@pytest.mark.asyncio
 async def test_get_goal(client: AsyncClient):
     create = await client.post(
         "/goals/",

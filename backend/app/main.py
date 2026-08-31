@@ -25,6 +25,9 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+# Kubernetes routes /api/* directly to the backend, while local Vite/nginx
+# strips that prefix. Supporting both keeps the API consistent in both paths.
+app.include_router(api_router, prefix="/api")
 
 
 @app.get("/")
