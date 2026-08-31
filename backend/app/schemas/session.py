@@ -49,6 +49,11 @@ class LogSetRequest(BaseModel):
     sets: list[SetLogWrite]
 
 
+class FinishExerciseRequest(BaseModel):
+    sets: list[SetLogWrite] = []
+    performed_at: date | None = None
+
+
 class PreviousSet(BaseModel):
     set_number: int
     weight: float | None
@@ -60,3 +65,23 @@ class PreviousPerformance(BaseModel):
     exercise_id: uuid.UUID
     performed_at: date
     sets: list[PreviousSet]
+
+
+class LoggedSet(BaseModel):
+    set_number: int
+    weight: float | None
+    reps: int | None
+    rir: int | None
+    failure: bool
+
+
+class ExerciseLogItem(BaseModel):
+    session_id: uuid.UUID
+    exercise_id: uuid.UUID
+    exercise_name: str
+    activity: str
+    performed_at: date
+    sets: list[LoggedSet]
+    top_weight: float | None
+    total_reps: int
+    failure_sets: list[int]

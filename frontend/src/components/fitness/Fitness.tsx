@@ -4,14 +4,12 @@ import AICoach from "./AICoach";
 import Calendar from "./Calendar";
 import Workout from "./Workout";
 import Progress from "./Progress";
-import Profile from "./Profile";
 
 const TABS = [
   { id: "calendar", label: "Calendar", icon: "📅" },
   { id: "workout", label: "Workout", icon: "🏋️" },
   { id: "progress", label: "Progress", icon: "📈" },
   { id: "coach", label: "AI Coach", icon: "🧠" },
-  { id: "profile", label: "Profile", icon: "👤" },
 ] as const;
 
 type Tab = (typeof TABS)[number]["id"];
@@ -24,7 +22,6 @@ export default function Fitness() {
 
   const goalId = goal?.id ?? null;
   const hasGoal = Boolean(goalId);
-
   const loadGoal = useCallback(async () => {
     try {
       const goals = await api.listGoals();
@@ -57,6 +54,7 @@ export default function Fitness() {
   if (!hasGoal && !loading) {
     return (
       <main className="responsive-container">
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
         <PageHeader />
         <div style={{ maxWidth: 520, margin: "0 auto", textAlign: "center", padding: "5rem 1rem" }}>
           <div style={{ fontSize: "2.75rem", marginBottom: "0.5rem" }}>🧠</div>
@@ -80,13 +78,13 @@ export default function Fitness() {
 
   return (
     <main className="responsive-container" style={{ paddingBottom: "4.5rem" }}>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       <PageHeader />
       <div className="fitness-content">
         {tab === "calendar" && <Calendar {...sharedProps} />}
-        {tab === "workout" && (goal ? <Workout goal={goal} onDone={refresh} /> : <p style={{ color: "var(--text-muted)", padding: "2rem" }}>Create a plan first.</p>)}
+        {tab === "workout" && <Workout goal={goal} />}
         {tab === "progress" && <Progress goal={goal} />}
         {tab === "coach" && <AICoach goal={goal} onPlanUpdated={refresh} />}
-        {tab === "profile" && <Profile goal={goal} onGoalChanged={() => { loadGoal(); refresh(); }} />}
       </div>
       <TabBar current={tab} onChange={setTab} />
     </main>
@@ -96,9 +94,6 @@ export default function Fitness() {
     return (
       <div style={{ marginBottom: "1.25rem" }}>
         <h1 style={{ fontSize: "1.35rem", fontWeight: 700 }}>Fitness</h1>
-        <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.1rem" }}>
-          {goal ? goal.title : "Your AI-powered coach"}
-        </p>
       </div>
     );
   }

@@ -31,5 +31,6 @@ class PlanEntry(Base):
     goal: Mapped["Goal"] = relationship(back_populates="plan_entries")
     exercises: Mapped[list["Exercise"]] = relationship(
         back_populates="plan_entry", cascade="all, delete-orphan",
+        lazy="selectin",
         order_by="Exercise.order_index"
     )

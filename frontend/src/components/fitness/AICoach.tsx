@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type CoachAction, type CoachMessage, type Goal } from "../../api.ts";
+import { api, type CoachMessage, type Goal } from "../../api";
 import { SPINNER, s } from "./shared";
 
 interface Props {
@@ -22,7 +22,6 @@ function Onboarding({ onComplete }: { onComplete: () => void }) {
   const [answer, setAnswer] = useState("");
   const [phase, setPhase] = useState<"describe" | "questions" | "generating" | "done">("describe");
   const [error, setError] = useState("");
-
   async function handleStart() {
     if (!input.trim()) return;
     setError("");
@@ -118,7 +117,8 @@ function CoachChat({ goal, onPlanUpdated }: { goal: Goal; onPlanUpdated: () => v
   const [messages, setMessages] = useState<CoachMessage[]>([]);
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
-  const [applying, setApplying] = useState<Record<number, boolean>>({});
+  const [finalizing, setFinalizing] = useState(false);
+  const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
     api.coachHistory(goal.id)
@@ -129,41 +129,38 @@ function CoachChat({ goal, onPlanUpdated }: { goal: Goal; onPlanUpdated: () => v
   async function handleSend(text: string) {
     if (!text.trim() || pending) return;
     setInput("");
+    setStatus(null);
     const history = messages.slice(-12).map(m => ({ role: m.role, text: m.text }));
     setMessages(prev => [...prev, { role: "user", text }]);
     setPending(true);
     try {
       const res = await api.coachChat(goal.id, text, history as { role: string; text: string }[]);
-      const newMsg: CoachMessage = {
-        role: "assistant",
-        text: res.message ?? "(no reply)",
-        action: res.action ?? null,
-      };
-      setMessages(prev => [...prev, newMsg]);
+      setMessages(prev => [...prev, { role: "assistant", text: res.message || "(no reply)" }]);
     } catch (e) {
       setMessages(prev => [...prev, { role: "assistant", text: e instanceof Error ? e.message : String(e) }]);
     }
     setPending(false);
   }
 
-  async function handleApply(idx: number, action: CoachAction) {
-    setApplying(prev => ({ ...prev, [idx]: true }));
-    try {
-      await api.coachApply(goal.id, action);
-      setMessages(prev => prev.map((m, i) => i === idx ? { ...m, action: null, text: m.text } : m));
-      onPlanUpdated();
-    } catch { /* keep action */ }
-    setApplying(prev => ({ ...prev, [idx]: false }));
-  }
-
   async function handleFinalize() {
+    if (finalizing) return;
     const history = messages.slice(-12).map(m => ({ role: m.role, text: m.text }));
-    setPending(true);
+    setFinalizing(true);
+    setStatus(null);
     try {
-      const res = await api.coachFinalize(goal.id, "finalize", history as { role: string; text: string }[]);
-      if (res && (res as { type?: string }).type === "finalized") onPlanUpdated();
-    } catch { /* ignore */ }
-    setPending(false);
+      const res = await api.coachFinalize(goal.id, "Apply everything we discussed.", history as { role: string; text: string }[]);
+      const sum = res.summary;
+      const text = sum
+        ? `✓ Plan updated — ${sum.weeks} week${sum.weeks === 1 ? "" : "s"}, ${sum.activities} activities, ${sum.exercises} exercises.`
+        : "✓ Plan updated.";
+      setMessages(prev => [...prev, { role: "assistant", text }]);
+      setStatus({ ok: true, text });
+      onPlanUpdated();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setStatus({ ok: false, text: msg });
+    }
+    setFinalizing(false);
   }
 
   useEffect(() => {
@@ -171,22 +168,20 @@ function CoachChat({ goal, onPlanUpdated }: { goal: Goal; onPlanUpdated: () => v
   }, [goal.id]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 180px)" }}>
-      <div style={{ ...s.card, flex: 1, display: "flex", flexDirection: "column", minHeight: 0, marginBottom: "0.75rem" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
-            <span style={{ fontSize: "1.1rem" }}>🧠</span>
-            <span style={{ fontSize: "0.88rem", fontWeight: 600 }}>AI Coach</span>
-          </div>
-          <button onClick={handleFinalize} disabled={pending} style={{ ...s.btnSmall, opacity: pending ? 0.5 : 1 }}>Finalize plan</button>
+    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 190px)" }}>
+      <div style={{ ...s.card, flex: 1, display: "flex", flexDirection: "column", minHeight: 0, marginBottom: "0.6rem" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", marginBottom: "0.5rem" }}>
+          <span style={{ fontSize: "1.1rem" }}>🧠</span>
+          <span style={{ fontSize: "0.88rem", fontWeight: 600 }}>AI Coach</span>
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: "0.4rem", marginBottom: "0.6rem" }}>
           {messages.length === 0 && (
             <div style={{ background: "var(--bg)", borderRadius: 8, padding: "0.75rem", fontSize: "0.85rem", color: "var(--text-muted)", lineHeight: 1.6 }}>
-              I'm your coach — I've analyzed your latest workouts, measurements, and schedule. Tell me what to change, or ask anything about your plan.
+              I'm your coach — I can see your workouts, measurements and schedule. Tell me what to change, then press
+              <strong style={{ color: "var(--text)" }}> Finalize plan </strong> and I'll rewrite your calendar.
               <div style={{ display: "flex", flexWrap: "wrap", gap: "0.3rem", marginTop: "0.5rem" }}>
-                {["Make workouts shorter", "Replace bench press", "I can train only 3x this week", "Add another walk", "No cable machine anymore"].map(t => (
+                {["Make workouts shorter", "Replace bench press", "I can only train 3x/week", "Add another walk", "No cable machine anymore"].map(t => (
                   <button key={t} onClick={() => handleSend(t)} style={{ ...s.btnSmall, fontSize: "0.72rem" }}>{t}</button>
                 ))}
               </div>
@@ -202,31 +197,16 @@ function CoachChat({ goal, onPlanUpdated }: { goal: Goal; onPlanUpdated: () => v
               padding: "0.45rem 0.75rem", fontSize: "0.82rem", maxWidth: "88%", lineHeight: 1.55, whiteSpace: "pre-wrap",
             }}>
               {m.text}
-              {m.action && (
-                <div style={{ marginTop: "0.4rem", display: "flex", flexDirection: "column", gap: "0.35rem" }}>
-                  <div style={{ fontSize: "0.72rem", opacity: 0.85 }}>Suggested change: <code style={{ background: "rgba(0,0,0,0.25)", padding: "1px 5px", borderRadius: 4 }}>{m.action.type}</code></div>
-                  <div style={{ display: "flex", gap: "0.3rem" }}>
-                    <button onClick={() => handleApply(i, m.action!)} disabled={applying[i]}
-                      style={{ background: "#22c55e", color: "#052005", border: "none", borderRadius: 6, padding: "0.3rem 0.6rem", fontSize: "0.72rem", fontWeight: 600, cursor: "pointer", opacity: applying[i] ? 0.5 : 1 }}>
-                      {applying[i] ? "Applying…" : "Apply ✓"}
-                    </button>
-                    <button onClick={() => setMessages(prev => prev.map((msg, j) => j === i ? { ...msg, action: null } : msg))}
-                      style={{ background: "rgba(255,255,255,0.12)", color: "#fff", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 6, padding: "0.3rem 0.6rem", fontSize: "0.72rem", cursor: "pointer" }}>
-                      Dismiss
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
           ))}
-          {pending && (
+          {(pending || finalizing) && (
             <div style={{ alignSelf: "flex-start", background: "var(--bg)", borderRadius: "12px 12px 12px 4px", padding: "0.4rem 0.7rem", display: "flex", alignItems: "center", gap: 6, fontSize: "0.8rem", color: "var(--text-muted)" }}>
-              {SPINNER} Thinking…
+              {SPINNER} {finalizing ? "Rebuilding your plan…" : "Thinking…"}
             </div>
           )}
         </div>
 
-        <div style={{ display: "flex", gap: "0.4rem", marginTop: "auto" }}>
+        <div style={{ display: "flex", gap: "0.4rem" }}>
           <input value={input} onChange={e => setInput(e.target.value)} placeholder="Tell your coach what to change…"
             style={{ ...s.input, marginTop: 0 }}
             onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleSend(input); } }} />
@@ -234,6 +214,25 @@ function CoachChat({ goal, onPlanUpdated }: { goal: Goal; onPlanUpdated: () => v
             style={{ ...s.btnPrimary, opacity: !input.trim() || pending ? 0.6 : 1 }}>Send</button>
         </div>
       </div>
+
+      {status && (
+        <div style={{
+          background: status.ok ? "color-mix(in srgb, #22c55e 15%, var(--surface))" : "color-mix(in srgb, #ef4444 15%, var(--surface))",
+          border: `1px solid ${status.ok ? "#22c55e" : "#ef4444"}`,
+          borderRadius: 8, padding: "0.5rem 0.75rem", fontSize: "0.8rem", marginBottom: "0.5rem", lineHeight: 1.5,
+        }}>
+          {status.ok ? status.text : `⚠️ ${status.text}`}
+        </div>
+      )}
+
+      <button onClick={handleFinalize} disabled={finalizing || pending}
+        style={{
+          ...s.btnPrimary, width: "100%", padding: "0.75rem", fontSize: "0.95rem",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: "0.4rem",
+          opacity: finalizing || pending ? 0.65 : 1,
+        }}>
+        {finalizing ? <>{SPINNER} Finalizing…</> : "Finalize plan → update calendar"}
+      </button>
     </div>
   );
 }

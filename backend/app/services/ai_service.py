@@ -1,5 +1,5 @@
 import json
-from datetime import date
+from datetime import date, timedelta
 
 import httpx
 
@@ -41,7 +41,7 @@ Return ONLY valid JSON — no markdown, no code fences, no extra text.
 
 Cover the most important of: primary goal specifics, current weight, height, body-fat %, muscle mass, training experience, sessions per week, available days, available equipment, preferred session duration, exercise preferences, exercises they dislike or cannot do, cardio preferences, lifestyle/activity level, injuries/limitations."""
 
-PLAN_PROMPT = f"""You are an AI fitness coach. Given a user's goal and their answers, create a structured weekly plan.
+PLAN_PROMPT = f"""You are an AI fitness coach. Given a user's goal and their answers, create a structured multi-week plan.
 
 Return ONLY valid JSON — no markdown, no code fences, no extra text.
 
@@ -50,10 +50,15 @@ Schema:
 
 Rules:
 - day_of_week: 0=Mon..6=Sun. Use null + frequency_hint for flexible ("3x/week").
-- Mix strength, cardio (walking/HIIT), mobility and recovery as appropriate for the goal.
-- Strength activities MUST include an exercises array with sets, a rep range (reps..reps_max), weight when known, and rir_target (reps in reserve; 2 is a good default).
-- For cardio like walking, put targets in notes (e.g. "8,000 steps") with empty or no exercises.
-- Make the plan progressive and realistic given the answers.
+- CRITICAL: A day CAN and SHOULD have multiple plan entries if multiple activities happen on that day.
+  For example, if the user does lifting and a 60-min walk on Monday, output TWO separate objects in the 'plan' array:
+  1) {{"week_number": 1, "day_of_week": 0, "activity": "Push & Abs", "duration_minutes": 60, "exercises": [...]}}
+  2) {{"week_number": 1, "day_of_week": 0, "activity": "Daily Walk", "duration_minutes": 60, "notes": "60 min brisk walk", "exercises": []}}
+  Never combine multiple activities into a single entry title or hide an activity in the notes.
+- The plan MUST span at least 12 weeks (or the user's stated duration). For EACH week, list ALL of its daily activities.
+- For every STRENGTH workout you MUST include "exercises": at least 4-6 specific exercises with sets, rep range (reps..reps_max), weight (when known), rir_target.
+- For cardio-like items (walk/HIIT/etc.) put targets in notes (e.g. "8,000 steps") and skip exercises (exercises: []).
+- Progress the plan week-by-week (load increases, rep increases, etc.).
 - today is {date.today().isoformat()}"""
 
 REFINE_PROMPT = f"""You are an AI fitness coach refining an existing plan. The current plan JSON is provided as context.
@@ -65,7 +70,11 @@ If finalizing: return ONLY valid JSON with the FULL updated plan using this sche
 
 Rules:
 - day_of_week: 0=Mon..6=Sun. Null + frequency_hint for flexible days.
-- Include ALL activities, modified based on the conversation."""
+- CRITICAL: If a day has multiple activities (e.g. lifting AND daily walking, or HIIT AND walking), emit EACH activity as its own separate entry in the 'plan' array with the same week_number and day_of_week.
+- Every STRENGTH workout MUST include the "exercises" array (name, sets, reps..reps_max, weight, rir_target).
+- For walking, cardio, or recovery: emit separate entries with duration_minutes and exercises: [].
+- Include ALL weeks of the plan (weeks 1..12) and ALL activities, modified based on the conversation.
+"""
 
 COACH_PROMPT = """You are the user's personal AI fitness coach, deeply connected to their data.
 
@@ -75,20 +84,55 @@ You receive:
 3. Recent workout session logs (weights, reps, RIR).
 4. Body measurements (weight, fat, muscle).
 
-Respond as a coach. You may propose a concrete program change using a supported action.
+Talk like a coach: concise, data-grounded, concrete. Reference their actual numbers when relevant.
 
-Supported actions (return one ONLY when a real change is warranted):
-{"type": "remove_hiit_this_week"}
-{"type": "add_walking_session", "params": {"steps": "8,000", "day_of_week": null, "duration_minutes": 45}}
-{"type": "replace_exercise", "params": {"old_name": "Bench Press", "new_name": "Dumbbell Press"}}
-{"type": "shorten_workout", "params": {"scope": "Workout A", "factor": 0.75}}
-{"type": "change_frequency", "params": {"strength_per_week": 3}}
+When the user asks for a program change (swap an exercise, train fewer/more days, shorter sessions,
+add cardio, equipment changes, etc.): confirm what you'll change in plain language and tell them to
+press "Finalize plan" to apply it to their calendar. Do NOT output JSON in this conversation."""
 
-Return ONLY valid JSON in one of these shapes:
-1) Plain message: {"type": "message", "message": "your reply"}
-2) Message with action: {"type": "action", "message": "short explanation", "action": {"type": "...", "params": {...}}}
+INSIGHTS_PROMPT = """You are an AI fitness coach analysing a user's actual training and body data.
 
-Keep messages concise and data-grounded."""
+You receive JSON containing:
+- goal (target metric, current value, week number)
+- body_latest and weight_history (weight, fat %, muscle %)
+- windows.last_7_days and windows.last_14_days: workouts logged, sets, total volume (kg),
+  failure sets (RIR 0), average RIR, schedule adherence, body composition change
+- exercise_history: recent sessions per exercise (top weight, reps, volume, best RIR)
+
+Cross-reference the windows. Judge, for example: is progress fast enough for the goal? is the user
+under-recovered or over-reaching (many failure sets, falling volume/performance)? is an exercise
+plateaued and worth swapping or progressing? is adherence realistic? is muscle being kept while fat drops?
+
+Return ONLY valid JSON — no markdown, no code fences:
+{
+  "severity": "good" | "watch" | "warning",
+  "headline": "short verdict (max 60 chars)",
+  "assessment": "2-4 sentences citing real numbers from the data",
+  "observations": ["specific data-backed observation", "..."],
+  "recommendations": ["concrete next action", "..."],
+  "exercise_notes": [
+    {
+      "exercise": "Bench Press",
+      "note": "why",
+      "action": "keep" | "increase_load" | "increase_reps" | "swap" | "deload",
+      "suggested_weight_kg": 82.5 or null,
+      "suggested_reps_min": 8 or null,
+      "suggested_reps_max": 10 or null,
+      "suggested_rir": 2 or null
+    }
+  ]
+}
+
+Rules:
+- Only state what the data supports; if something has no data, say it's missing instead of inventing it.
+- For every exercise with logged weight, include an exercise_note and suggested_weight_kg for next week.
+- Be balanced: a clearly under-loaded session can justify progression, but consider repeated trends when available.
+- Do not increase through frequent RIR 0, missed sessions, declining performance, or recovery warnings.
+- Increase only after repeated successful sessions at the top of the rep range with the prescribed RIR.
+- Normal increases are 1-2.5 kg for upper-body lifts and 2.5-5 kg for lower-body compounds.
+- Use action "keep" and the current working weight when evidence is insufficient.
+- Suggested reps and RIR should describe next week's working target, not the completed session.
+- 2-5 observations and 1-4 recommendations."""
 
 
 async def _call_ai(messages: list[dict]) -> str:
@@ -146,6 +190,15 @@ def _parse(raw: str) -> dict:
         raise
 
 
+def _optional_number(value, cast):
+    if value is None:
+        return None
+    try:
+        return cast(value)
+    except (TypeError, ValueError):
+        return None
+
+
 async def generate_questions(user_input: str) -> list[str]:
     content = await _call_ai([
         {"role": "system", "content": QUESTIONS_PROMPT},
@@ -177,6 +230,15 @@ def to_date(val: str | None) -> date | None:
     return None
 
 
+def normalize_start_date(value: date | None) -> date:
+    """Plans always start on a Monday, and never in the past (calendar weeks must line up)."""
+    today = date.today()
+    monday_this_week = today - timedelta(days=today.weekday())
+    if value is None or value < monday_this_week:
+        return monday_this_week
+    return value - timedelta(days=value.weekday())
+
+
 def _exercise_payload(ed: dict) -> dict:
     return {
         "name": ed.get("name") or "Exercise",
@@ -190,17 +252,111 @@ def _exercise_payload(ed: dict) -> dict:
     }
 
 
+def _split_compound_activity(activity: str) -> list[str]:
+    import re
+    # Split on '+' always (e.g. 'Push + Walking')
+    if "+" in activity:
+        parts = [p.strip() for p in activity.split("+") if p.strip()]
+        if len(parts) > 1:
+            return parts
+
+    # Split on '&' or ' and ' ONLY when one side is cardio/walking/recovery and not just a muscle group like 'Push & Abs'
+    cardio_kw = r"\b(walk|walking|cardio|steps|recovery\s*walk|hiit|running|jogging)\b"
+    muscle_kw = r"\b(abs|core|triceps|biceps|shoulders|delts|calves|glutes)\b"
+
+    for sep in [" & ", " and "]:
+        if sep in activity:
+            parts = [p.strip() for p in activity.split(sep) if p.strip()]
+            if len(parts) == 2:
+                # If one side is cardio/walk/hiit and the other is NOT just a sub-muscle group:
+                has_cardio = bool(re.search(cardio_kw, parts[0], re.I) or re.search(cardio_kw, parts[1], re.I))
+                is_sub_muscle = bool(re.fullmatch(muscle_kw, parts[1], re.I))
+                if has_cardio and not is_sub_muscle:
+                    return parts
+
+    return [activity]
+
+
+def _parse_plan_items(items: list) -> list:
+    """Normalize AI plan items:
+    1. Split compound activities ('Push + Walking', 'HIIT 1 & Recovery Walk') into separate entries.
+    2. Extract hidden daily walking mentioned in notes into its own separate plan entry for that day.
+    3. Ensure exercises are attached only to strength workouts.
+    """
+    import re
+
+    normalized: list[dict] = []
+    seen_walk_days: set[tuple[int, int | None]] = set()
+
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+
+        raw_activity = str(item.get("activity") or "").strip()
+        week_num = int(item.get("week_number") or 1)
+        dow = item.get("day_of_week")
+        notes = str(item.get("notes") or "").strip()
+
+        sub_activities = _split_compound_activity(raw_activity)
+
+        for idx, act in enumerate(sub_activities):
+            elem = dict(item)
+            elem["activity"] = act
+            is_str = _looks_strength(act)
+            elem["exercises"] = item.get("exercises") if (is_str or (not is_str and not _looks_pure_cardio(act) and idx == 0)) else []
+            if _looks_pure_cardio(act) and not is_str:
+                elem["exercises"] = []
+                if "walk" in act.lower() and not elem.get("duration_minutes"):
+                    elem["duration_minutes"] = 60
+            normalized.append(elem)
+
+            if "walk" in act.lower():
+                seen_walk_days.add((week_num, dow))
+
+        # Check if the notes mention a separate daily/recovery walk that wasn't given its own item
+        walk_in_notes_match = re.search(
+            r"(?:complete\s+)?(?:daily\s+)?(?:(\d+)[\s-]*min(?:ute)?\s+)?(?:brisk\s+|recovery\s+)?walk(?:ing)?(?:\s+separately)?",
+            notes,
+            re.IGNORECASE,
+        )
+        if walk_in_notes_match and (week_num, dow) not in seen_walk_days:
+            # Only if the current activity is not already a walk
+            if not any("walk" in a.lower() for a in sub_activities):
+                mins = int(walk_in_notes_match.group(1)) if walk_in_notes_match.group(1) else 60
+                walk_entry = {
+                    "week_number": week_num,
+                    "day_of_week": dow,
+                    "activity": f"Walk — {mins} min",
+                    "duration_minutes": mins,
+                    "notes": "Daily brisk walk",
+                    "frequency_hint": None,
+                    "exercises": [],
+                }
+                normalized.append(walk_entry)
+                seen_walk_days.add((week_num, dow))
+
+    return normalized
+
+
+def _looks_pure_cardio(activity: str) -> bool:
+    import re
+    return bool(re.search(r"^\s*(?:daily\s+|recovery\s+|brisk\s+)?(?:walk|walking|hiit|cardio|jogging|running)\b", activity, re.IGNORECASE)) and not _looks_strength(activity)
+
+
+def _looks_strength(activity: str) -> bool:
+    import re
+    return bool(re.search(r"push|pull|leg|upper|lower|strength|workout|gym|chest|back|arms|core|shoulder|biceps|triceps|full.?body", activity, re.IGNORECASE))
+
+
 async def create_goal_with_plan(ai_output: dict, session, raw_json: dict | None = None) -> dict:
     from app.models.goal import Goal
     from app.models.plan import PlanEntry
     from app.models.exercise import Exercise
 
     goal_data = ai_output["goal"]
-    plan_entries = ai_output.get("plan", [])
+    plan_entries = _parse_plan_items(ai_output.get("plan", []))
 
-    start = to_date(goal_data.get("start_date"))
-    if not start and plan_entries:
-        start = date.today()
+    start = normalize_start_date(to_date(goal_data.get("start_date")))
 
     goal = Goal(
         title=goal_data.get("title", "Fitness Goal"),
@@ -302,24 +458,103 @@ async def coach_reply(user_message: str, context: dict, history: list[dict]) -> 
     for h in history:
         messages.append({"role": h["role"], "content": h["text"]})
     messages.append({"role": "user", "content": user_message})
-    content = await _call_ai(messages)
-    try:
-        parsed = _parse(content)
-        if isinstance(parsed, dict) and "type" in parsed:
-            return parsed
-    except Exception:
-        pass
+    content = (await _call_ai(messages)).strip()
+    # Some models still answer with {"type": "message", "message": ...}; unwrap it.
+    if content.startswith("{"):
+        try:
+            parsed = _parse(content)
+            if isinstance(parsed, dict) and parsed.get("message"):
+                content = str(parsed["message"])
+        except Exception:
+            pass
     return {"type": "message", "message": content}
 
 
+MIN_PLAN_WEEKS = 4
+
+
+async def analyze_training(data: dict) -> dict:
+    """Ask the AI to interpret the 7/14-day training + body data package."""
+    content = await _call_ai([
+        {"role": "system", "content": INSIGHTS_PROMPT},
+        {"role": "user", "content": json.dumps(data, indent=2, default=str)},
+    ])
+    parsed = _parse(content)
+    if not isinstance(parsed, dict) or not parsed.get("assessment"):
+        raise ValueError("AI returned an unusable analysis")
+    parsed.setdefault("severity", "good")
+    parsed.setdefault("headline", "Training insight")
+    parsed.setdefault("observations", [])
+    parsed.setdefault("recommendations", [])
+    parsed.setdefault("exercise_notes", [])
+    # keep the response tidy for the UI
+    parsed["observations"] = [str(o) for o in parsed["observations"]][:6]
+    parsed["recommendations"] = [str(r) for r in parsed["recommendations"]][:5]
+    notes = []
+    for n in parsed["exercise_notes"][:6]:
+        if isinstance(n, dict) and n.get("exercise"):
+            notes.append({
+                "exercise": str(n["exercise"]),
+                "note": str(n.get("note") or ""),
+                "action": str(n.get("action") or "keep"),
+                "suggested_weight_kg": _optional_number(n.get("suggested_weight_kg"), float),
+                "suggested_reps_min": _optional_number(n.get("suggested_reps_min"), int),
+                "suggested_reps_max": _optional_number(n.get("suggested_reps_max"), int),
+                "suggested_rir": _optional_number(n.get("suggested_rir"), int),
+            })
+    parsed["exercise_notes"] = notes
+    return parsed
+
+
+def max_week(plan_items: list) -> int:
+    return max((int(i.get("week_number") or 1) for i in plan_items if isinstance(i, dict)), default=0)
+
+
+def plan_summary(plan_items: list) -> dict:
+    weeks = {int(i.get("week_number") or 1) for i in plan_items if isinstance(i, dict)}
+    exercises = sum(len(i.get("exercises") or []) for i in plan_items if isinstance(i, dict))
+    return {"weeks": len(weeks), "activities": len(plan_items), "exercises": exercises}
+
+
 async def coach_finalize(user_message: str, context: dict, history: list[dict]) -> dict:
-    messages = [{"role": "system", "content": REFINE_PROMPT}]
     plan_json = json.dumps({"goal": context.get("goal", {}), "plan": context.get("plan", [])}, indent=2)
-    messages.append({"role": "user", "content": f"Current plan:\n{plan_json}"})
-    for h in history:
-        messages.append({"role": h["role"], "content": h["text"]})
-    messages.append({"role": "user", "content": f"{user_message}\n\nFinalize: return the COMPLETE updated plan JSON only."})
-    return _parse(await _call_ai(messages))
+
+    def build(extra: str | None = None) -> list[dict]:
+        messages = [{"role": "system", "content": REFINE_PROMPT}]
+        messages.append({"role": "user", "content": f"Current plan:\n{plan_json}"})
+        for h in history:
+            messages.append({"role": h["role"], "content": h["text"]})
+        instructions = (
+            f"{user_message}\n\n"
+            "FINALIZE NOW. Return ONLY the JSON object described in the schema — no prose, no code fences.\n"
+            f"It MUST contain at least {MIN_PLAN_WEEKS} distinct week_number values (target 12 weeks).\n"
+            "If a day contains multiple activities (e.g. lifting workout AND daily walking, or HIIT AND walking), "
+            "emit EACH activity as its own separate object in the 'plan' array with the corresponding week_number and day_of_week.\n"
+            "Never hide activities in notes or combine them into a single string.\n"
+            "Every strength workout MUST include an 'exercises' array with sets, reps, rir_target."
+        )
+        if extra:
+            instructions += f"\n\n{extra}"
+        messages.append({"role": "user", "content": instructions})
+        return messages
+
+    ai_output = _parse(await _call_ai(build()))
+    plan_items = ai_output.get("plan") or []
+
+    # One retry when the model returned a single-week (or empty) plan.
+    if max_week(plan_items) < MIN_PLAN_WEEKS:
+        retry_note = (
+            f"Your previous answer only covered {max_week(plan_items)} week(s). "
+            "Return the FULL program again, repeating each week explicitly with its own week_number "
+            "(1..12) and all activities. Do not summarize or say 'repeat week 1'."
+        )
+        try:
+            retried = _parse(await _call_ai(build(retry_note)))
+            if max_week(retried.get("plan") or []) > max_week(plan_items):
+                ai_output = retried
+        except Exception:
+            pass
+    return ai_output
 
 
 async def update_goal_with_plan(ai_output: dict, session, goal_id, raw_json: dict | None = None) -> dict:
@@ -333,7 +568,7 @@ async def update_goal_with_plan(ai_output: dict, session, goal_id, raw_json: dic
         raise ValueError("Goal not found")
 
     goal_data = ai_output["goal"]
-    plan_entries = ai_output.get("plan", [])
+    plan_entries = _parse_plan_items(ai_output.get("plan", []))
 
     if goal_data.get("title"):
         goal.title = goal_data["title"]
@@ -347,8 +582,7 @@ async def update_goal_with_plan(ai_output: dict, session, goal_id, raw_json: dic
         goal.target_value = goal_data["target_value"]
     if goal_data.get("unit") is not None:
         goal.unit = goal_data["unit"]
-    if goal_data.get("start_date"):
-        goal.start_date = to_date(goal_data["start_date"])
+    goal.start_date = normalize_start_date(to_date(goal_data.get("start_date")) or goal.start_date)
     if goal_data.get("target_date"):
         goal.target_date = to_date(goal_data["target_date"])
     goal.ai_response = raw_json
@@ -416,3 +650,4 @@ async def update_goal_with_plan(ai_output: dict, session, goal_id, raw_json: dic
         },
         "entries": entries,
     }
+

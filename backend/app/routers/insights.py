@@ -8,11 +8,48 @@ from app.database import get_session
 from app.models.coach import AIInsight
 from app.models.goal import Goal
 from app.schemas.progress import ProgressResponse
-from app.schemas.progress import ConsistencyStats  # noqa: F401
 from app.services import insights as insights_service
-from app.services.actions import apply_action
 
 router = APIRouter(prefix="/goals/{goal_id}/insights", tags=["insights"])
+
+
+@router.post("/analyze")
+async def analyze_insights(
+    goal_id: uuid.UUID,
+    force: bool = False,
+    session: AsyncSession = Depends(get_session),
+):
+    """Deep analysis: crosses logged workouts with body metrics over 7 and 14 days."""
+    goal = await session.get(Goal, goal_id)
+    if not goal:
+        raise HTTPException(status_code=404, detail="Goal not found")
+    insight = await insights_service.analyze(session, goal_id, force=force)
+    if not insight:
+        raise HTTPException(status_code=502, detail="Could not build an analysis")
+    return _to_dict(insight)
+
+
+@router.post("/{insight_id}/apply-progression")
+async def apply_progression(
+    goal_id: uuid.UUID,
+    insight_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+):
+    """Apply the previewed targets to matching exercises in next week's plan only."""
+    insight = await session.get(AIInsight, insight_id)
+    if not insight or insight.goal_id != goal_id or insight.kind != "analysis":
+        raise HTTPException(status_code=404, detail="Analysis insight not found")
+    try:
+        result = await insights_service.apply_progression_targets(session, goal_id, insight)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return {"insight": _to_dict(insight), **result}
+
+
+@router.get("/data")
+async def analysis_data(goal_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
+    """The raw 7/14-day data package behind the analysis (useful for debugging/graphs)."""
+    return await insights_service.build_analysis_data(session, goal_id)
 
 
 @router.post("/generate", response_model=dict)
@@ -41,7 +78,7 @@ def _to_dict(i: AIInsight) -> dict:
         "severity": i.severity,
         "title": i.title,
         "body": i.body,
-        "action": i.action,
+        "payload": i.payload,
         "status": i.status,
         "created_at": i.created_at.isoformat() if i.created_at else None,
     }
@@ -54,24 +91,6 @@ async def dismiss_insight(goal_id: uuid.UUID, insight_id: uuid.UUID, session: As
         raise HTTPException(status_code=404, detail="Insight not found")
     ins.status = "dismissed"
     await session.commit()
-    return _to_dict(ins)
-
-
-@router.post("/{insight_id}/apply")
-async def apply_insight(goal_id: uuid.UUID, insight_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
-    ins = await session.get(AIInsight, insight_id)
-    if not ins or ins.goal_id != goal_id:
-        raise HTTPException(status_code=404, detail="Insight not found")
-    if ins.status != "open":
-        raise HTTPException(status_code=409, detail="Insight is not open")
-    if not ins.action:
-        raise HTTPException(status_code=422, detail="Insight has no action to apply")
-    try:
-        await apply_action(session, goal_id, ins.action)
-        ins.status = "applied"
-        await session.commit()
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Failed to apply action: {e}")
     return _to_dict(ins)
 
 

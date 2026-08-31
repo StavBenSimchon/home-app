@@ -3,6 +3,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
+from app.schemas.exercise import ExerciseResponse
+
 
 class PlanEntryBase(BaseModel):
     goal_id: uuid.UUID
@@ -34,3 +36,4 @@ class PlanEntryResponse(PlanEntryBase):
     id: uuid.UUID
     completed: bool
     created_at: datetime
+    exercises: list[ExerciseResponse] = []

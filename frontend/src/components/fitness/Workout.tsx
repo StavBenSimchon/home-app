@@ -1,204 +1,125 @@
-import { useCallback, useEffect, useState } from "react";
-import { api, type Exercise, type Goal, type PlanEntry, type SetLog, type WorkoutSession } from "../../api";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { api, type ExerciseLogItem, type Goal } from "../../api";
 import { SPINNER, s } from "./shared";
 
 interface Props {
-  goal: Goal;
-  entry?: PlanEntry | null;
-  onClose?: () => void;
-  onDone?: () => void;
+  goal: Goal | null;
 }
 
-export default function Workout({ goal, entry, onClose, onDone }: Props) {
-  if (!entry) return <WorkoutPicker goal={goal} />;
-  return <WorkoutSessionView goal={goal} entry={entry} onClose={onClose} onDone={onDone} />;
-}
+export default function Workout({ goal }: Props) {
+  const [log, setLog] = useState<ExerciseLogItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState("");
 
-function WorkoutPicker({ goal }: { goal: Goal }) {
-  const [entries, setEntries] = useState<PlanEntry[]>([]);
-  const [selected, setSelected] = useState<PlanEntry | null>(null);
-  useEffect(() => {
-    api.listPlanEntries(goal.id).then(setEntries).catch(() => setEntries([]));
-  }, [goal.id]);
-  if (selected) return <WorkoutSessionView goal={goal} entry={selected} onClose={() => setSelected(null)} />;
-  const withExercises = entries.filter(e => e.exercises && e.exercises.length > 0);
+  const load = useCallback(async () => {
+    if (!goal) { setLoading(false); return; }
+    setLoading(true);
+    try { setLog(await api.getExerciseLog(goal.id)); } catch { setLog([]); }
+    setLoading(false);
+  }, [goal]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q ? log.filter(i => i.exercise_name.toLowerCase().includes(q)) : log;
+  }, [log, query]);
+
+  const byDate = useMemo(() => {
+    const groups: Record<string, ExerciseLogItem[]> = {};
+    for (const item of filtered) (groups[item.performed_at] ??= []).push(item);
+    return Object.entries(groups).sort(([a], [b]) => b.localeCompare(a));
+  }, [filtered]);
+
+  const totals = useMemo(() => ({
+    exercises: log.length,
+    sets: log.reduce((n, i) => n + i.sets.length, 0),
+    failures: log.reduce((n, i) => n + i.failure_sets.length, 0),
+  }), [log]);
+
+  if (!goal) return <p style={{ color: "var(--text-muted)" }}>Create a plan first.</p>;
+
   return (
     <div>
-      <p style={{ color: "var(--text-muted)", marginBottom: "0.75rem" }}>Pick a workout:</p>
-      {withExercises.length === 0 && <p style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>No workouts with exercises in your plan.</p>}
-      {withExercises.map(e => (
-        <div key={e.id} onClick={() => setSelected(e)} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "0.75rem 0.9rem", marginBottom: "0.5rem", cursor: "pointer" }}>
-          <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>{e.activity}</div>
-          <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{e.exercises?.length ?? 0} exercises{e.duration_minutes ? ` · ~${e.duration_minutes} min` : ""}</div>
+      <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", lineHeight: 1.55, marginBottom: "0.85rem" }}>
+        Your training log — every exercise you finished from the calendar, with weight, reps and RIR.
+      </p>
+
+      {log.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.5rem", marginBottom: "0.85rem" }}>
+          {[
+            { label: "Exercises", value: totals.exercises },
+            { label: "Sets", value: totals.sets },
+            { label: "To failure", value: totals.failures },
+          ].map(t => (
+            <div key={t.label} style={{ ...s.card, padding: "0.6rem", textAlign: "center" }}>
+              <div style={{ fontSize: "0.62rem", color: "var(--text-muted)", textTransform: "uppercase" }}>{t.label}</div>
+              <div style={{ fontSize: "1.2rem", fontWeight: 700 }}>{t.value}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {log.length > 3 && (
+        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Filter by exercise…"
+          style={{ ...s.input, marginTop: 0, marginBottom: "0.85rem" }} />
+      )}
+
+      {loading && <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", display: "flex", gap: 6, alignItems: "center" }}>{SPINNER} Loading…</p>}
+
+      {!loading && log.length === 0 && (
+        <div style={{ ...s.card, textAlign: "center", padding: "2rem 1rem" }}>
+          <div style={{ fontSize: "1.75rem", marginBottom: "0.4rem" }}>🏋️</div>
+          <div style={{ fontWeight: 600, marginBottom: "0.25rem" }}>Nothing logged yet</div>
+          <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", lineHeight: 1.55, margin: 0 }}>
+            Open a workout in the <strong>Calendar</strong>, enter your weight / reps / RIR per set,
+            and press <strong>Finish exercise</strong>. It'll show up here.
+          </p>
+        </div>
+      )}
+
+      {byDate.map(([dateStr, items]) => (
+        <div key={dateStr} style={{ marginBottom: "1.1rem" }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: "0.5rem", marginBottom: "0.4rem" }}>
+            <span style={{ fontSize: "0.88rem", fontWeight: 700 }}>
+              {new Date(dateStr).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+            </span>
+            <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>{items[0].activity}</span>
+          </div>
+
+          {items.map(item => (
+            <div key={`${item.session_id}-${item.exercise_id}`} style={{ ...s.card, padding: "0.7rem 0.85rem", marginBottom: "0.45rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "0.5rem" }}>
+                <span style={{ fontWeight: 600, fontSize: "0.88rem" }}>{item.exercise_name}</span>
+                <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>
+                  {item.sets.length} sets{item.top_weight != null ? ` · top ${item.top_weight} kg` : ""}
+                </span>
+              </div>
+
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.3rem", marginTop: "0.45rem" }}>
+                {item.sets.map(set => (
+                  <span key={set.set_number} style={{
+                    background: set.failure ? "color-mix(in srgb, #ef4444 20%, var(--bg))" : "var(--bg)",
+                    border: `1px solid ${set.failure ? "#ef4444" : "var(--border)"}`,
+                    borderRadius: 6, padding: "0.2rem 0.45rem", fontSize: "0.72rem", whiteSpace: "nowrap",
+                  }}>
+                    <span style={{ color: "var(--text-muted)" }}>#{set.set_number}</span>{" "}
+                    {set.weight != null ? `${set.weight}kg` : "–"} × {set.reps ?? "–"}
+                    {set.rir != null ? ` · RIR ${set.rir}` : ""}
+                    {set.failure ? " ⚡" : ""}
+                  </span>
+                ))}
+              </div>
+
+              {item.failure_sets.length > 0 && (
+                <div style={{ fontSize: "0.72rem", color: "#ef4444", marginTop: "0.35rem" }}>
+                  Reached failure on set {item.failure_sets.join(", ")}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       ))}
-    </div>
-  );
-}
-
-function WorkoutSessionView({ goal, entry, onClose, onDone }: { goal: Goal; entry: PlanEntry; onClose?: () => void; onDone?: () => void }) {
-  const [exercises] = useState<Exercise[]>(entry.exercises ?? []);
-  const [session, setSession] = useState<WorkoutSession | null>(null);
-  const [logs, setLogs] = useState<Record<string, Record<number, SetLog>>>({});
-  const [previous, setPrevious] = useState<Record<string, { weight: number | null; reps: number | null; rir: number | null }[]>>({});
-  const [starting, setStarting] = useState(true);
-  const [completing, setCompleting] = useState(false);
-
-  const start = useCallback(async () => {
-    try {
-      const s = await api.startSession(goal.id, entry.id);
-      setSession(s);
-    } catch { /* offline ok */ }
-    setStarting(false);
-  }, [goal.id, entry.id]);
-
-  useEffect(() => { start(); }, [start]);
-
-  useEffect(() => {
-    // Load previous performance for each exercise
-    exercises.forEach(ex => {
-      api.getPrevious(goal.id, entry.id, ex.id).then(p => {
-        if (p) setPrevious(prev => ({ ...prev, [ex.id]: p.sets.map(s => ({ weight: s.weight, reps: s.reps, rir: s.rir })) }));
-      }).catch(() => {});
-    });
-  }, [goal.id, entry.id, exercises]);
-
-  function setField(exId: string, setNum: number, field: "weight" | "reps" | "rir", value: string) {
-    const num = value === "" ? undefined : parseFloat(value);
-    setLogs(prev => {
-      const exLogs = { ...(prev[exId] ?? {}) };
-      const current = exLogs[setNum] ?? { exercise_id: exId, set_number: setNum };
-      const updated = { ...current, [field]: num };
-      exLogs[setNum] = updated;
-      return { ...prev, [exId]: exLogs };
-    });
-  }
-
-  async function persistSet(exId: string, setNum: number) {
-    if (!session) return;
-    const log = logs[exId]?.[setNum];
-    if (!log) return;
-    await api.logSets(goal.id, session.id, [log]).catch(() => {});
-  }
-
-  async function completeSession() {
-    if (!session) return;
-    setCompleting(true);
-    try {
-      // Persist anything pending
-      const pending = Object.values(logs).flatMap(l => Object.values(l));
-      if (pending.length) await api.logSets(goal.id, session.id, pending).catch(() => {});
-      await api.completeSession(goal.id, session.id);
-      onDone?.();
-      onClose?.();
-    } catch { setCompleting(false); }
-  }
-
-  const doneExercises = exercises.filter(e => e.completed || Object.values(logs[e.id] ?? {}).some(l => l.weight != null || l.reps != null)).length;
-  const total = exercises.length;
-
-  return (
-    <Overlay onClose={onClose}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-        <div>
-          <h2 style={{ fontSize: "1.25rem", fontWeight: 700 }}>{entry.activity}</h2>
-          <p style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>{total} exercises{entry.duration_minutes ? ` · ~${entry.duration_minutes} min` : ""}</p>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <div style={{ fontSize: "0.75rem", color: doneExercises === total ? "#22c55e" : "var(--text-muted)", fontWeight: 600 }}>
-            {doneExercises}/{total}
-          </div>
-          {onClose && <button onClick={onClose} style={{ background: "var(--bg)", border: "none", borderRadius: 8, width: 30, height: 30, cursor: "pointer", color: "var(--text-muted)", flexShrink: 0 }}>✕</button>}
-        </div>
-      </div>
-
-      {total > 0 && (
-        <div style={{ height: 5, background: "var(--bg)", borderRadius: 3, marginBottom: "1rem", overflow: "hidden" }}>
-          <div style={{ width: `${(doneExercises / total) * 100}%`, height: "100%", background: doneExercises === total ? "#22c55e" : "var(--primary)", transition: "width 0.3s" }} />
-        </div>
-      )}
-
-      <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-        {exercises.map((ex, i) => {
-          const setCount = ex.sets ?? 3;
-          const prev = previous[ex.id];
-          const exLogs = logs[ex.id] ?? {};
-          const isDone = Object.values(exLogs).some(l => l.weight != null || l.reps != null);
-          return (
-            <div key={ex.id} style={{ background: "var(--bg)", borderRadius: 12, padding: "0.9rem" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.4rem" }}>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: "0.95rem" }}>{i + 1}. {ex.name}</div>
-                  <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-                    {ex.sets} sets × {ex.reps}{ex.reps_max ? `–${ex.reps_max}` : ""} reps{ex.weight ? ` · ${ex.weight} kg` : ""}
-                    {ex.rir_target != null && ` · RIR ${ex.rir_target}`}
-                  </div>
-                  {prev && prev.length > 0 && (
-                    <div style={{ fontSize: "0.72rem", color: "var(--primary)", marginTop: "0.15rem" }}>
-                      Previous: {prev[0]?.weight ?? "?"} kg × {prev[0]?.reps ?? "?"} × {prev.length}
-                    </div>
-                  )}
-                </div>
-                {isDone && <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5"><path d="M20 6L9 17l-5-5" /></svg>}
-              </div>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.82rem" }}>
-                <thead>
-                  <tr style={{ color: "var(--text-muted)", fontSize: "0.7rem" }}>
-                    <th style={{ textAlign: "left", padding: "0.15rem 0" }}>Set</th>
-                    <th style={{ textAlign: "right", padding: "0.15rem 0" }}>Weight</th>
-                    <th style={{ textAlign: "right", padding: "0.15rem 0" }}>Reps</th>
-                    <th style={{ textAlign: "right", padding: "0.15rem 0" }}>RIR</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Array.from({ length: setCount }, (_, sIdx) => {
-                    const setNum = sIdx + 1;
-                    const log = exLogs[setNum];
-                    return (
-                      <tr key={setNum}>
-                        <td style={{ padding: "0.25rem 0", fontWeight: 600 }}>{setNum}</td>
-                        {["weight", "reps", "rir"].map(field => (
-                          <td key={field} style={{ padding: "0.15rem 0", textAlign: "right" }}>
-                            <input
-                              inputMode="decimal"
-                              placeholder={prev?.[sIdx] ? String(prev[sIdx][field as "weight" | "reps" | "rir"] ?? "") : ""}
-                              value={log?.[field as "weight" | "reps" | "rir"] ?? ""}
-                              onChange={e => setField(ex.id, setNum, field as "weight" | "reps" | "rir", e.target.value)}
-                              onBlur={() => persistSet(ex.id, setNum)}
-                              style={{ width: "100%", maxWidth: 64, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "0.25rem 0.4rem", color: "var(--text)", fontSize: "0.82rem", textAlign: "right" }}
-                            />
-                          </td>
-                        ))}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>
-                RIR: 0 = failure · 1 = ~1 left · 2 = ~2 left · 3+ = easy
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {session && (
-        <button onClick={completeSession} disabled={completing}
-          style={{ ...s.btnPrimary, width: "100%", marginTop: "1.25rem", padding: "0.75rem", fontSize: "0.95rem", display: "flex", justifyContent: "center", alignItems: "center", gap: "0.4rem", opacity: completing ? 0.7 : 1 }}>
-          {completing ? <>{SPINNER} Completing…</> : doneExercises === total ? "Complete workout ✓" : "Finish & mark workout"}
-        </button>
-      )}
-      {starting && <p style={{ color: "var(--text-muted)", textAlign: "center", marginTop: "1rem", fontSize: "0.85rem" }}>Starting session…</p>}
-    </Overlay>
-  );
-}
-
-function Overlay({ children, onClose }: { children: React.ReactNode; onClose?: () => void }) {
-  return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 100, padding: "0.75rem" }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", borderRadius: "18px 18px 0 0", padding: "1.5rem", width: "100%", maxWidth: 560, maxHeight: "92vh", overflowY: "auto", margin: "auto" }}>
-        {children}
-      </div>
     </div>
   );
 }

@@ -14,8 +14,7 @@ from app.models.goal import Goal
 from app.models.plan import PlanEntry
 from app.models.session import SetLog, WorkoutSession
 from app.models.weight import WeightEntry
-from app.services.ai_service import coach_finalize, coach_reply
-from app.services.actions import apply_action
+from app.services.ai_service import coach_finalize, coach_reply, plan_summary
 
 router = APIRouter(prefix="/coach", tags=["coach"])
 
@@ -24,11 +23,6 @@ class CoachChatRequest(BaseModel):
     goal_id: str | None = None
     message: str
     history: list[dict] = []
-
-
-class CoachApplyRequest(BaseModel):
-    goal_id: str
-    action: dict
 
 
 def _default_goal_query():
@@ -171,38 +165,25 @@ async def finalize(payload: CoachChatRequest, session: AsyncSession = Depends(ge
             ai_output = await coach_finalize(payload.message, context, history)
         except Exception as e:
             raise HTTPException(status_code=502, detail=f"AI service error: {e}")
-        if "goal" not in ai_output or "plan" not in ai_output:
-            raise HTTPException(status_code=502, detail="AI returned invalid format")
+        if not isinstance(ai_output, dict) or "goal" not in ai_output or "plan" not in ai_output:
+            raise HTTPException(status_code=502, detail="AI returned an invalid plan format. Try Finalize again.")
+        if not ai_output.get("plan"):
+            raise HTTPException(status_code=502, detail="AI returned an empty plan. Try Finalize again.")
 
+        summary = plan_summary(ai_output["plan"])
         from app.services.ai_service import update_goal_with_plan
         result = await update_goal_with_plan(ai_output, session, goal.id, raw_json=ai_output)
-        await _persist_message(session, goal.id, "assistant", "Plan updated.")
+        await _persist_message(
+            session, goal.id, "assistant",
+            f"✓ Plan updated — {summary['weeks']} weeks, {summary['activities']} activities, {summary['exercises']} exercises.",
+        )
         await session.commit()
-        return {"type": "finalized", **result}
+        return {"type": "finalized", "summary": summary, **result}
     except HTTPException:
         raise
     except Exception as e:
         print(f"coach finalize error: {traceback.format_exc()}", flush=True)
         raise HTTPException(status_code=502, detail=f"Coach error: {e}")
-
-
-@router.post("/actions")
-async def apply(payload: CoachApplyRequest, session: AsyncSession = Depends(get_session)):
-    try:
-        gid = uuid.UUID(payload.goal_id)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="Invalid goal_id")
-    goal = await session.get(Goal, gid)
-    if not goal:
-        raise HTTPException(status_code=404, detail="Goal not found")
-    try:
-        result = await apply_action(session, gid, payload.action)
-        await session.commit()
-        return {"applied": True, "result": result}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Failed to apply action: {e}")
 
 
 @router.get("/history")

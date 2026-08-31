@@ -13,21 +13,6 @@ services:
       timeout: 5s
       retries: 5
 
-  backend-test:
-    build:
-      context: ./backend
-      target: dev
-    env_file:
-      - .env
-    environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://homeapp:homeapp_dev@db:5432/homeapp}
-      AI_MODEL: ${AI_MODEL}
-      AI_BASE_URL: ${AI_BASE_URL}
-    depends_on:
-      db:
-        condition: service_healthy
-    command: sh -c "uv pip install -q pytest pytest-asyncio && .venv/bin/python -m pytest -q"
-
   backend:
     build:
       context: ./backend

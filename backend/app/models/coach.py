@@ -38,6 +38,7 @@ class AIInsight(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     action: Mapped[dict | None] = mapped_column(JSONBCompat)
+    payload: Mapped[dict | None] = mapped_column(JSONBCompat)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="open")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

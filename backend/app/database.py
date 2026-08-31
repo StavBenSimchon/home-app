@@ -106,3 +106,4 @@ async def init_db():
                 created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
             )
         """))
+        await conn.execute(text("ALTER TABLE ai_insights ADD COLUMN IF NOT EXISTS payload JSONB"))
