@@ -9,7 +9,9 @@ class ExerciseBase(BaseModel):
     name: str
     sets: int | None = None
     reps: int | None = None
+    reps_max: int | None = None
     weight: float | None = None
+    rir_target: int | None = None
     duration_seconds: int | None = None
     order_index: int = 0
     notes: str | None = None
@@ -23,7 +25,9 @@ class ExerciseUpdate(BaseModel):
     name: str | None = None
     sets: int | None = None
     reps: int | None = None
+    reps_max: int | None = None
     weight: float | None = None
+    rir_target: int | None = None
     duration_seconds: int | None = None
     order_index: int | None = None
     completed: bool | None = None

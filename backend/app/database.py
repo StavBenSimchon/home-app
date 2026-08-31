@@ -57,3 +57,52 @@ async def init_db():
                 created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
             )
         """))
+        await conn.execute(text("ALTER TABLE exercises ADD COLUMN IF NOT EXISTS reps_max INTEGER"))
+        await conn.execute(text("ALTER TABLE exercises ADD COLUMN IF NOT EXISTS rir_target INTEGER"))
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS workout_sessions (
+                id UUID PRIMARY KEY,
+                plan_entry_id UUID NOT NULL REFERENCES plan_entries(id) ON DELETE CASCADE,
+                performed_at DATE NOT NULL,
+                duration_minutes INTEGER,
+                status VARCHAR(20) NOT NULL DEFAULT 'in_progress',
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+            )
+        """))
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS set_logs (
+                id UUID PRIMARY KEY,
+                session_id UUID NOT NULL REFERENCES workout_sessions(id) ON DELETE CASCADE,
+                exercise_id UUID NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
+                set_number INTEGER NOT NULL,
+                weight FLOAT,
+                reps INTEGER,
+                rir INTEGER,
+                completed BOOLEAN NOT NULL DEFAULT TRUE,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+            )
+        """))
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS coach_messages (
+                id UUID PRIMARY KEY,
+                goal_id UUID NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
+                role VARCHAR(20) NOT NULL,
+                text TEXT NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+            )
+        """))
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS ai_insights (
+                id UUID PRIMARY KEY,
+                goal_id UUID NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
+                kind VARCHAR(30) NOT NULL DEFAULT 'daily',
+                severity VARCHAR(20) NOT NULL DEFAULT 'good',
+                title VARCHAR(255) NOT NULL,
+                body TEXT NOT NULL,
+                action JSONB,
+                status VARCHAR(20) NOT NULL DEFAULT 'open',
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+            )
+        """))

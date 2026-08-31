@@ -42,6 +42,8 @@ export interface Exercise {
   completed: boolean;
   notes: string | null;
   created_at: string;
+  reps_max?: number | null;
+  rir_target?: number | null;
 }
 
 export interface PlanEntry {
@@ -65,6 +67,108 @@ export interface WeightEntry {
   muscle_percentage: number | null;
   measured_at: string;
   created_at: string;
+}
+
+// ---------- Fitness types (matching backend schemas) ----------
+
+export interface SetLog {
+  id?: string;
+  session_id?: string;
+  exercise_id: string;
+  set_number: number;
+  weight?: number | null;
+  reps?: number | null;
+  rir?: number | null;
+  completed?: boolean;
+}
+
+export interface WorkoutSession {
+  id: string;
+  plan_entry_id: string;
+  performed_at: string;
+  duration_minutes: number | null;
+  status: "in_progress" | "completed";
+  set_logs: SetLog[];
+}
+
+export interface PreviousSet {
+  set_number: number;
+  weight: number | null;
+  reps: number | null;
+  rir: number | null;
+}
+
+export interface PreviousPerformance {
+  exercise_id: string;
+  performed_at: string;
+  sets: PreviousSet[];
+}
+
+export interface CoachAction {
+  type: string;
+  params?: Record<string, unknown>;
+}
+
+export interface CoachMessage {
+  role: "user" | "assistant";
+  text: string;
+  action?: CoachAction | null;
+}
+
+export interface CoachResponse {
+  type: "message" | "action";
+  message: string;
+  action?: CoachAction | null;
+}
+
+export interface AIInsight {
+  id: string;
+  goal_id: string;
+  kind: string;
+  severity: "good" | "warning" | "info";
+  title: string;
+  body: string;
+  action: CoachAction | null;
+  status: "open" | "applied" | "dismissed";
+  created_at: string;
+}
+
+export interface ExercisePoint {
+  date: string;
+  top_weight: number | null;
+  top_reps: number | null;
+  best_rir: number | null;
+  set_count: number;
+}
+
+export interface ExerciseTrend {
+  exercise_name: string;
+  points: ExercisePoint[];
+}
+
+export interface ConsistencyStats {
+  planned: number;
+  completed: number;
+  completion_rate: number;
+  current_streak: number;
+  weekly: { week: number; planned: number; completed: number }[];
+}
+
+export interface ProgressData {
+  consistency: ConsistencyStats;
+  trends: ExerciseTrend[];
+}
+
+export interface WeeklyReview {
+  metrics: Record<string, number>;
+  summary: string;
+  recommendation: string;
+}
+
+export interface GenerateInsightsResponse {
+  type: "none" | "created";
+  message?: string;
+  insights: AIInsight[];
 }
 
 export const api = {
@@ -122,4 +226,47 @@ export const api = {
     request<WeightEntry>(`/weight/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   deleteWeight: (id: string) =>
     request<void>(`/weight/${id}`, { method: "DELETE" }),
+
+  // Sessions / Set logging
+  startSession: (goalId: string, entryId: string) =>
+    request<WorkoutSession>(`/goals/${goalId}/sessions/entries/${entryId}`, { method: "POST", body: JSON.stringify({}) }),
+  logSets: (goalId: string, sessionId: string, sets: SetLog[]) =>
+    request<WorkoutSession>(`/goals/${goalId}/sessions/${sessionId}/sets`, { method: "POST", body: JSON.stringify({ sets }) }),
+  completeSession: (goalId: string, sessionId: string) =>
+    request<WorkoutSession>(`/goals/${goalId}/sessions/${sessionId}/complete`, { method: "POST" }),
+  getPrevious: (goalId: string, entryId: string, exerciseId: string) =>
+    request<PreviousPerformance | null>(`/goals/${goalId}/sessions/entries/${entryId}/previous?exercise_id=${exerciseId}`),
+
+  // Coach
+  coachChat: (goalId: string | null, message: string, history?: { role: string; text: string }[]) =>
+    request<CoachResponse>("/coach/chat", {
+      method: "POST",
+      body: JSON.stringify({ goal_id: goalId, message, history: history ?? [] }),
+    }),
+  coachFinalize: (goalId: string | null, message: string, history?: { role: string; text: string }[]) =>
+    request<CoachResponse & { goal?: Goal; entries?: PlanEntry[] }>("/coach/finalize", {
+      method: "POST",
+      body: JSON.stringify({ goal_id: goalId, message, history: history ?? [] }),
+    }),
+  coachApply: (goalId: string, action: CoachAction) =>
+    request<{ applied: boolean; result: Record<string, unknown> }>("/coach/actions", {
+      method: "POST",
+      body: JSON.stringify({ goal_id: goalId, action }),
+    }),
+  coachHistory: (goalId: string) =>
+    request<{ role: string; text: string; created_at: string }[]>(`/coach/history?goal_id=${goalId}`),
+
+  // Insights / Progress
+  generateInsights: (goalId: string) =>
+    request<GenerateInsightsResponse>(`/goals/${goalId}/insights/generate`, { method: "POST" }),
+  listInsights: (goalId: string, status = "open") =>
+    request<AIInsight[]>(`/goals/${goalId}/insights/?status=${status}`),
+  dismissInsight: (goalId: string, insightId: string) =>
+    request<AIInsight>(`/goals/${goalId}/insights/${insightId}/dismiss`, { method: "POST" }),
+  applyInsight: (goalId: string, insightId: string) =>
+    request<AIInsight>(`/goals/${goalId}/insights/${insightId}/apply`, { method: "POST" }),
+  weeklyReview: (goalId: string) =>
+    request<WeeklyReview>(`/goals/${goalId}/insights/weekly`),
+  getProgress: (goalId: string) =>
+    request<ProgressData>(`/goals/${goalId}/progress/`),
 };

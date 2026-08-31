@@ -1,6 +1,6 @@
 import { Routes, Route } from "react-router-dom";
 import Dashboard from "./components/Dashboard";
-import Fitness from "./components/Fitness";
+import Fitness from "./components/fitness/Fitness";
 import SettleUp from "./components/SettleUp";
 
 export default function App() {

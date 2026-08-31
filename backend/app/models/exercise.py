@@ -2,25 +2,27 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, func
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.types import GUID
 
 
 class Exercise(Base):
     __tablename__ = "exercises"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+        GUID, primary_key=True, default=uuid.uuid4
     )
     plan_entry_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("plan_entries.id", ondelete="CASCADE"), nullable=False
+        GUID, ForeignKey("plan_entries.id", ondelete="CASCADE"), nullable=False
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     sets: Mapped[int | None] = mapped_column(Integer)
     reps: Mapped[int | None] = mapped_column(Integer)
+    reps_max: Mapped[int | None] = mapped_column(Integer)
     weight: Mapped[float | None] = mapped_column(Float)
+    rir_target: Mapped[int | None] = mapped_column(Integer)
     duration_seconds: Mapped[int | None] = mapped_column(Integer)
     order_index: Mapped[int] = mapped_column(Integer, default=0)
     completed: Mapped[bool] = mapped_column(Boolean, default=False)

@@ -2,20 +2,20 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.types import GUID
 
 
 class PlanEntry(Base):
     __tablename__ = "plan_entries"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+        GUID, primary_key=True, default=uuid.uuid4
     )
     goal_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("goals.id", ondelete="CASCADE"), nullable=False
+        GUID, ForeignKey("goals.id", ondelete="CASCADE"), nullable=False
     )
     week_number: Mapped[int] = mapped_column(Integer, nullable=False)
     day_of_week: Mapped[int | None] = mapped_column(Integer)

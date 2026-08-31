@@ -5,21 +5,9 @@ import httpx
 
 from app.config import settings
 
-QUESTIONS_PROMPT = """You are a fitness planner AI. Given a user's goal, generate 5 clarifying questions to create a better plan.
+EXERCISE_SCHEMA = '{"name": "name", "sets": 3, "reps": 10, "reps_max": 12, "weight": null, "rir_target": 2, "duration_seconds": null, "notes": null}'
 
-Return ONLY valid JSON — no markdown, no code fences, no extra text.
-
-{"questions": ["q1", "q2", "q3", "q4", "q5"]}
-
-Cover: workout location, available equipment, days per week, time per session, injuries/limitations, fitness level."""
-
-PLAN_PROMPT = """You are a fitness planner AI. Given a user's goal and their answers to clarifying questions, create a structured weekly plan.
-
-Return ONLY valid JSON — no markdown, no code fences, no extra text.
-
-Schema:
-{
-  "goal": {
+GOAL_SCHEMA = """{
     "title": "short descriptive title",
     "description": "detailed goal description",
     "metric_name": "metric being tracked or null",
@@ -28,29 +16,79 @@ Schema:
     "unit": "unit or null",
     "start_date": "today ISO date",
     "target_date": "ISO date or null"
-  },
+  }"""
+
+PLAN_SCHEMA = f"""{{
+  "goal": {GOAL_SCHEMA},
   "plan": [
-    {
+    {{
       "week_number": 1,
       "day_of_week": 0,
       "activity": "activity name",
       "duration_minutes": 30,
       "notes": "details or null",
       "frequency_hint": null,
-      "exercises": [
-        {"name": "exercise name", "sets": 3, "reps": 12, "weight": null, "duration_seconds": null}
-      ]
-    }
+      "exercises": [ {EXERCISE_SCHEMA} ]
+    }}
   ]
-}
+}}"""
+
+QUESTIONS_PROMPT = """You are an AI fitness coach. Given a user's goal, generate up to 8 short clarifying questions to build a complete coaching profile.
+
+Return ONLY valid JSON — no markdown, no code fences, no extra text.
+
+{"questions": ["q1", "q2", ...]}
+
+Cover the most important of: primary goal specifics, current weight, height, body-fat %, muscle mass, training experience, sessions per week, available days, available equipment, preferred session duration, exercise preferences, exercises they dislike or cannot do, cardio preferences, lifestyle/activity level, injuries/limitations."""
+
+PLAN_PROMPT = f"""You are an AI fitness coach. Given a user's goal and their answers, create a structured weekly plan.
+
+Return ONLY valid JSON — no markdown, no code fences, no extra text.
+
+Schema:
+{PLAN_SCHEMA}
 
 Rules:
 - day_of_week: 0=Mon..6=Sun. Use null + frequency_hint for flexible ("3x/week").
-- For daily activities, create 7 entries.
-- Make the plan progressive.
-- Include exercises array for workout activities with sets/reps.
-- today is 2026-07-04
-"""
+- Mix strength, cardio (walking/HIIT), mobility and recovery as appropriate for the goal.
+- Strength activities MUST include an exercises array with sets, a rep range (reps..reps_max), weight when known, and rir_target (reps in reserve; 2 is a good default).
+- For cardio like walking, put targets in notes (e.g. "8,000 steps") with empty or no exercises.
+- Make the plan progressive and realistic given the answers.
+- today is {date.today().isoformat()}"""
+
+REFINE_PROMPT = f"""You are an AI fitness coach refining an existing plan. The current plan JSON is provided as context.
+
+If NOT finalizing: respond conversationally — answer questions, suggest tweaks, ask clarifying questions.
+
+If finalizing: return ONLY valid JSON with the FULL updated plan using this schema:
+{PLAN_SCHEMA}
+
+Rules:
+- day_of_week: 0=Mon..6=Sun. Null + frequency_hint for flexible days.
+- Include ALL activities, modified based on the conversation."""
+
+COACH_PROMPT = """You are the user's personal AI fitness coach, deeply connected to their data.
+
+You receive:
+1. Their goal and profile.
+2. The current plan (calendar entries + exercises with set/rep/RIR targets).
+3. Recent workout session logs (weights, reps, RIR).
+4. Body measurements (weight, fat, muscle).
+
+Respond as a coach. You may propose a concrete program change using a supported action.
+
+Supported actions (return one ONLY when a real change is warranted):
+{"type": "remove_hiit_this_week"}
+{"type": "add_walking_session", "params": {"steps": "8,000", "day_of_week": null, "duration_minutes": 45}}
+{"type": "replace_exercise", "params": {"old_name": "Bench Press", "new_name": "Dumbbell Press"}}
+{"type": "shorten_workout", "params": {"scope": "Workout A", "factor": 0.75}}
+{"type": "change_frequency", "params": {"strength_per_week": 3}}
+
+Return ONLY valid JSON in one of these shapes:
+1) Plain message: {"type": "message", "message": "your reply"}
+2) Message with action: {"type": "action", "message": "short explanation", "action": {"type": "...", "params": {...}}}
+
+Keep messages concise and data-grounded."""
 
 
 async def _call_ai(messages: list[dict]) -> str:
@@ -114,16 +152,15 @@ async def generate_questions(user_input: str) -> list[str]:
         {"role": "user", "content": user_input},
     ])
     data = _parse(content)
-    return data["questions"][:5]
+    return data["questions"][:8]
 
 
 async def generate_plan(user_input: str, qa: list[dict] | None = None) -> dict:
     context = f"Goal: {user_input}\n"
     if qa:
-        context += "\nClarifying answers:\n"
+        context += "\nAnswers:\n"
         for item in qa:
             context += f"Q: {item['question']}\nA: {item['answer']}\n"
-
     content = await _call_ai([
         {"role": "system", "content": PLAN_PROMPT},
         {"role": "user", "content": context},
@@ -138,6 +175,19 @@ def to_date(val: str | None) -> date | None:
         except (ValueError, TypeError):
             return None
     return None
+
+
+def _exercise_payload(ed: dict) -> dict:
+    return {
+        "name": ed.get("name") or "Exercise",
+        "sets": ed.get("sets"),
+        "reps": ed.get("reps"),
+        "reps_max": ed.get("reps_max"),
+        "weight": ed.get("weight"),
+        "rir_target": ed.get("rir_target"),
+        "duration_seconds": ed.get("duration_seconds"),
+        "notes": ed.get("notes"),
+    }
 
 
 async def create_goal_with_plan(ai_output: dict, session, raw_json: dict | None = None) -> dict:
@@ -168,12 +218,12 @@ async def create_goal_with_plan(ai_output: dict, session, raw_json: dict | None 
 
     entries = []
     for pe in plan_entries:
-        exercises_data = pe.pop("exercises", []) or []
+        exercises_data = pe.get("exercises", []) or []
         entry = PlanEntry(
             goal_id=goal.id,
-            week_number=pe["week_number"],
+            week_number=pe.get("week_number", 1),
             day_of_week=pe.get("day_of_week"),
-            activity=pe["activity"],
+            activity=pe.get("activity", "Activity"),
             duration_minutes=pe.get("duration_minutes"),
             notes=pe.get("notes"),
             frequency_hint=pe.get("frequency_hint"),
@@ -183,18 +233,11 @@ async def create_goal_with_plan(ai_output: dict, session, raw_json: dict | None 
 
         exercises = []
         for i, ed in enumerate(exercises_data):
-            ex = Exercise(
-                plan_entry_id=entry.id,
-                name=ed["name"],
-                sets=ed.get("sets"),
-                reps=ed.get("reps"),
-                weight=ed.get("weight"),
-                duration_seconds=ed.get("duration_seconds"),
-                order_index=i,
-                notes=ed.get("notes"),
-            )
+            payload = _exercise_payload(ed)
+            ex = Exercise(plan_entry_id=entry.id, order_index=i, **payload)
             session.add(ex)
             exercises.append(ex)
+        await session.flush()
 
         entries.append({
             "id": str(entry.id),
@@ -207,15 +250,10 @@ async def create_goal_with_plan(ai_output: dict, session, raw_json: dict | None 
             "completed": entry.completed,
             "exercises": [
                 {
-                    "id": str(ex.id),
-                    "name": ex.name,
-                    "sets": ex.sets,
-                    "reps": ex.reps,
-                    "weight": ex.weight,
-                    "duration_seconds": ex.duration_seconds,
-                    "order_index": ex.order_index,
-                    "completed": ex.completed,
-                    "notes": ex.notes,
+                    "id": str(ex.id), "name": ex.name, "sets": ex.sets, "reps": ex.reps,
+                    "reps_max": ex.reps_max, "weight": ex.weight, "rir_target": ex.rir_target,
+                    "duration_seconds": ex.duration_seconds, "order_index": ex.order_index,
+                    "completed": ex.completed, "notes": ex.notes,
                 }
                 for ex in exercises
             ],
@@ -240,50 +278,10 @@ async def create_goal_with_plan(ai_output: dict, session, raw_json: dict | None 
     }
 
 
-CONTINUE_PROMPT = """You are a fitness planner AI helping refine an existing plan.
-
-You have the current plan JSON as context. The user wants to discuss changes.
-
-If NOT finalizing: respond conversationally — answer questions, suggest tweaks, ask clarifying questions.
-
-If finalizing: Return ONLY valid JSON with the UPDATED full plan using EXACTLY this schema:
-{
-  "goal": {
-    "title": "title",
-    "description": "description",
-    "metric_name": "metric or null",
-    "current_value": number or null,
-    "target_value": number or null,
-    "unit": "unit or null",
-    "start_date": "ISO date",
-    "target_date": "ISO date or null"
-  },
-  "plan": [
-    {
-      "week_number": 1,
-      "day_of_week": 0,
-      "activity": "name",
-      "duration_minutes": 30,
-      "notes": "details or null",
-      "frequency_hint": null,
-      "exercises": [
-        {"name": "name", "sets": 3, "reps": 12, "weight": null, "duration_seconds": null}
-      ]
-    }
-  ]
-}
-
-Rules:
-- day_of_week: 0=Mon..6=Sun. Null + frequency_hint for flexible days.
-- Include ALL activities, modified based on the conversation.
-- today is 2026-07-04
-"""
-
-
 async def continue_plan(user_message: str, current_plan: dict, history: list | None = None, finalize: bool = False) -> str | dict:
     plan_json = json.dumps(current_plan, indent=2)
     history = history or []
-    messages = [{"role": "system", "content": CONTINUE_PROMPT}]
+    messages = [{"role": "system", "content": REFINE_PROMPT}]
     messages.append({"role": "user", "content": f"Current plan:\n{plan_json}"})
     for h in history:
         messages.append({"role": h["role"], "content": h["text"]})
@@ -293,10 +291,35 @@ async def continue_plan(user_message: str, current_plan: dict, history: list | N
         messages.append({"role": "user", "content": user_message})
 
     content = await _call_ai(messages)
-
     if finalize:
         return _parse(content)
     return content
+
+
+async def coach_reply(user_message: str, context: dict, history: list[dict]) -> dict:
+    messages = [{"role": "system", "content": COACH_PROMPT}]
+    messages.append({"role": "user", "content": f"Coach context:\n{json.dumps(context, indent=2)}"})
+    for h in history:
+        messages.append({"role": h["role"], "content": h["text"]})
+    messages.append({"role": "user", "content": user_message})
+    content = await _call_ai(messages)
+    try:
+        parsed = _parse(content)
+        if isinstance(parsed, dict) and "type" in parsed:
+            return parsed
+    except Exception:
+        pass
+    return {"type": "message", "message": content}
+
+
+async def coach_finalize(user_message: str, context: dict, history: list[dict]) -> dict:
+    messages = [{"role": "system", "content": REFINE_PROMPT}]
+    plan_json = json.dumps({"goal": context.get("goal", {}), "plan": context.get("plan", [])}, indent=2)
+    messages.append({"role": "user", "content": f"Current plan:\n{plan_json}"})
+    for h in history:
+        messages.append({"role": h["role"], "content": h["text"]})
+    messages.append({"role": "user", "content": f"{user_message}\n\nFinalize: return the COMPLETE updated plan JSON only."})
+    return _parse(await _call_ai(messages))
 
 
 async def update_goal_with_plan(ai_output: dict, session, goal_id, raw_json: dict | None = None) -> dict:
@@ -337,12 +360,12 @@ async def update_goal_with_plan(ai_output: dict, session, goal_id, raw_json: dic
 
     entries = []
     for pe in plan_entries:
-        exercises_data = pe.pop("exercises", []) or []
+        exercises_data = pe.get("exercises", []) or []
         entry = PlanEntry(
             goal_id=goal.id,
-            week_number=pe["week_number"],
+            week_number=pe.get("week_number", 1),
             day_of_week=pe.get("day_of_week"),
-            activity=pe["activity"],
+            activity=pe.get("activity", "Activity"),
             duration_minutes=pe.get("duration_minutes"),
             notes=pe.get("notes"),
             frequency_hint=pe.get("frequency_hint"),
@@ -352,18 +375,11 @@ async def update_goal_with_plan(ai_output: dict, session, goal_id, raw_json: dic
 
         exercises = []
         for i, ed in enumerate(exercises_data):
-            ex = Exercise(
-                plan_entry_id=entry.id,
-                name=ed["name"],
-                sets=ed.get("sets"),
-                reps=ed.get("reps"),
-                weight=ed.get("weight"),
-                duration_seconds=ed.get("duration_seconds"),
-                order_index=i,
-                notes=ed.get("notes"),
-            )
+            payload = _exercise_payload(ed)
+            ex = Exercise(plan_entry_id=entry.id, order_index=i, **payload)
             session.add(ex)
             exercises.append(ex)
+        await session.flush()
 
         entries.append({
             "id": str(entry.id),
@@ -376,8 +392,9 @@ async def update_goal_with_plan(ai_output: dict, session, goal_id, raw_json: dic
             "completed": entry.completed,
             "exercises": [
                 {"id": str(ex.id), "name": ex.name, "sets": ex.sets, "reps": ex.reps,
-                 "weight": ex.weight, "duration_seconds": ex.duration_seconds,
-                 "order_index": ex.order_index, "completed": ex.completed, "notes": ex.notes}
+                 "reps_max": ex.reps_max, "weight": ex.weight, "rir_target": ex.rir_target,
+                 "duration_seconds": ex.duration_seconds, "order_index": ex.order_index,
+                 "completed": ex.completed, "notes": ex.notes}
                 for ex in exercises
             ],
         })
