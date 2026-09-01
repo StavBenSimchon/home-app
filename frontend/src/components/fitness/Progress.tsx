@@ -20,11 +20,13 @@ const LINES = [
 ] as const;
 
 type LineKey = (typeof LINES)[number]["key"];
+type LineSelection = "all" | LineKey;
 
 export default function Progress({ goal }: Props) {
   const [weights, setWeights] = useState<WeightEntry[]>([]);
   const [progress, setProgress] = useState<ProgressData | null>(null);
   const [range, setRange] = useState<RangeKey>("3m");
+  const [selectedLine, setSelectedLine] = useState<LineSelection>("all");
   const [hover, setHover] = useState<{ line: LineKey; idx: number; x: number; y: number } | null>(null);
 
   const load = useCallback(async () => {
@@ -48,7 +50,8 @@ export default function Progress({ goal }: Props) {
     const cutoff = RANGES.find(r => r.key === range)?.days;
     const startIso = cutoff ? new Date(Date.now() - cutoff * 86400000).toISOString().slice(0, 10) : sorted[0].measured_at;
     const filtered = sorted.filter(e => e.measured_at >= startIso);
-    const series = LINES.map(l => ({
+    const visibleLines = selectedLine === "all" ? LINES : LINES.filter(line => line.key === selectedLine);
+    const series = visibleLines.map(l => ({
       ...l,
       points: filtered.map((e, i) => {
         const val = valueOf(e, l.key as LineKey);
@@ -67,7 +70,7 @@ export default function Progress({ goal }: Props) {
 
     series.forEach(s => s.points.forEach(p => { p.x = x(p.i); p.y = y(p.val!); }));
     return { W, H, pad, iw, ih, min, span, series, entries: filtered };
-  }, [sorted, range]);
+  }, [sorted, range, selectedLine]);
 
   function valueOf(e: WeightEntry, key: LineKey): number | null {
     if (key === "weight") return e.weight_kg;
@@ -164,14 +167,32 @@ export default function Progress({ goal }: Props) {
                   fill="var(--text-muted)" fontSize="9">{e.measured_at.slice(5)}</text>
               ))}
             </svg>
-            <div style={{ display: "flex", gap: "1rem", fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.25rem", justifyContent: "center", flexWrap: "wrap" }}>
-              {LINES.map(l => (
-                <span key={l.key} style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-                  <span style={{ width: 10, height: 3, background: l.color, display: "inline-block", borderRadius: 2 }} />
-                  {l.label}
-                </span>
-              ))}
+            <div style={{ display: "flex", gap: "0.35rem", fontSize: "0.75rem", marginTop: "0.5rem", justifyContent: "center", flexWrap: "wrap" }}>
+              {LINES.map(line => {
+                const active = selectedLine === line.key;
+                return (
+                  <button
+                    key={line.key}
+                    aria-pressed={active}
+                    onClick={() => setSelectedLine(current => current === line.key ? "all" : line.key)}
+                    style={{
+                      ...s.btnSmall,
+                      display: "flex", alignItems: "center", gap: "0.3rem",
+                      background: active ? "var(--surface-hover)" : "var(--bg)",
+                      color: active ? "var(--text)" : "var(--text-muted)",
+                      borderColor: active ? line.color : "var(--border)",
+                    }}>
+                    <span style={{ width: 10, height: 3, background: line.color, display: "inline-block", borderRadius: 2 }} />
+                    {line.label}
+                  </button>
+                );
+              })}
             </div>
+            {selectedLine !== "all" && (
+              <div style={{ textAlign: "center", fontSize: "0.66rem", color: "var(--text-muted)", marginTop: "0.3rem" }}>
+                Tap {LINES.find(line => line.key === selectedLine)?.label} again to show all metrics
+              </div>
+            )}
           </>
         )}
       </div>
