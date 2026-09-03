@@ -18,7 +18,8 @@ class SetLogResponse(BaseModel):
 
     id: uuid.UUID
     session_id: uuid.UUID
-    exercise_id: uuid.UUID
+    exercise_log_id: uuid.UUID | None = None
+    exercise_id: uuid.UUID | None
     set_number: int
     weight: float | None
     reps: int | None
@@ -28,17 +29,38 @@ class SetLogResponse(BaseModel):
     updated_at: datetime
 
 
+class WorkoutExerciseLogResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    session_id: uuid.UUID
+    source_exercise_id: uuid.UUID | None
+    exercise_name: str
+    performed_at: date
+    order_index: int
+    target_sets: int | None
+    target_reps: int | None
+    target_reps_max: int | None
+    target_weight: float | None
+    target_rir: int | None
+    completed_at: datetime | None
+    set_logs: list[SetLogResponse] = []
+
+
 class SessionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    plan_entry_id: uuid.UUID
+    goal_id: uuid.UUID
+    plan_entry_id: uuid.UUID | None
+    activity_name: str
     performed_at: date
     duration_minutes: int | None
     status: str
     created_at: datetime
     updated_at: datetime
     set_logs: list[SetLogResponse] = []
+    exercise_logs: list[WorkoutExerciseLogResponse] = []
 
 
 class SessionStartRequest(BaseModel):
@@ -76,8 +98,9 @@ class LoggedSet(BaseModel):
 
 
 class ExerciseLogItem(BaseModel):
+    id: uuid.UUID
     session_id: uuid.UUID
-    exercise_id: uuid.UUID
+    source_exercise_id: uuid.UUID | None
     exercise_name: str
     activity: str
     performed_at: date
@@ -85,3 +108,16 @@ class ExerciseLogItem(BaseModel):
     top_weight: float | None
     total_reps: int
     failure_sets: list[int]
+
+
+class EditableLoggedSet(BaseModel):
+    set_number: int
+    weight: float | None = None
+    reps: int | None = None
+    rir: int | None = None
+
+
+class ExerciseLogUpdate(BaseModel):
+    performed_at: date | None = None
+    exercise_name: str | None = None
+    sets: list[EditableLoggedSet] | None = None

@@ -84,10 +84,23 @@ export interface SetLog {
 
 export interface WorkoutSession {
   id: string;
-  plan_entry_id: string;
+  goal_id: string;
+  plan_entry_id: string | null;
+  activity_name: string;
   performed_at: string;
   duration_minutes: number | null;
   status: "in_progress" | "completed";
+  set_logs: SetLog[];
+  exercise_logs: WorkoutExerciseSnapshot[];
+}
+
+export interface WorkoutExerciseSnapshot {
+  id: string;
+  session_id: string;
+  source_exercise_id: string | null;
+  exercise_name: string;
+  performed_at: string;
+  completed_at: string | null;
   set_logs: SetLog[];
 }
 
@@ -113,8 +126,9 @@ export interface LoggedSet {
 }
 
 export interface ExerciseLogItem {
+  id: string;
   session_id: string;
-  exercise_id: string;
+  source_exercise_id: string | null;
   exercise_name: string;
   activity: string;
   performed_at: string;
@@ -122,6 +136,12 @@ export interface ExerciseLogItem {
   top_weight: number | null;
   total_reps: number;
   failure_sets: number[];
+}
+
+export interface ExerciseLogEdit {
+  performed_at?: string;
+  exercise_name?: string;
+  sets?: { set_number: number; weight: number | null; reps: number | null; rir: number | null }[];
 }
 
 export interface CoachMessage {
@@ -304,8 +324,6 @@ export const api = {
     request<WorkoutSession>(`/goals/${goalId}/sessions/${sessionId}/exercises/${exerciseId}/finish`, {
       method: "POST", body: JSON.stringify({ sets }),
     }),
-  unfinishExercise: (goalId: string, sessionId: string, exerciseId: string) =>
-    request<WorkoutSession>(`/goals/${goalId}/sessions/${sessionId}/exercises/${exerciseId}/unfinish`, { method: "POST" }),
   completeSession: (goalId: string, sessionId: string) =>
     request<WorkoutSession>(`/goals/${goalId}/sessions/${sessionId}/complete`, { method: "POST" }),
   getPrevious: (goalId: string, entryId: string, exerciseId: string, before?: string) =>
@@ -313,6 +331,12 @@ export const api = {
       `/goals/${goalId}/sessions/entries/${entryId}/previous?exercise_id=${exerciseId}${before ? `&before=${before}` : ""}`),
   getExerciseLog: (goalId: string) =>
     request<ExerciseLogItem[]>(`/goals/${goalId}/sessions/log`),
+  updateExerciseLog: (goalId: string, logId: string, data: ExerciseLogEdit) =>
+    request<ExerciseLogItem>(`/goals/${goalId}/sessions/log/${logId}`, {
+      method: "PATCH", body: JSON.stringify(data),
+    }),
+  deleteExerciseLog: (goalId: string, logId: string) =>
+    request<void>(`/goals/${goalId}/sessions/log/${logId}`, { method: "DELETE" }),
 
   // Coach
   coachChat: (goalId: string | null, message: string, history?: { role: string; text: string }[]) =>

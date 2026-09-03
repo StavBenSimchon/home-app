@@ -43,6 +43,12 @@ async def test_log_sets_and_previous(client: AsyncClient):
     assert len(logs) == 2
     assert logs[0]["reps"] == 10
 
+    # Autosave is still a draft; finishing promotes it into immutable history.
+    await client.post(
+        f"/goals/{goal_id}/sessions/{session_id}/exercises/{ex_id}/finish",
+        json={"sets": resp.json()["set_logs"]},
+    )
+
     # previous performance endpoint
     prev = await client.get(
         f"/goals/{goal_id}/sessions/entries/{entry_id}/previous?exercise_id={ex_id}")
@@ -78,7 +84,7 @@ async def test_complete_session_marks_entry(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_progress_endpoint(client: AsyncClient):
     goal_id, entry_id, ex_id, session_id = await _mk_goal_with_session(client)
-    await client.post(f"/goals/{goal_id}/sessions/{session_id}/sets", json={"sets": [
+    await client.post(f"/goals/{goal_id}/sessions/{session_id}/exercises/{ex_id}/finish", json={"sets": [
         {"exercise_id": ex_id, "set_number": 1, "weight": 80, "reps": 10, "rir": 2},
     ]})
     resp = await client.get(f"/goals/{goal_id}/progress/")
@@ -153,18 +159,19 @@ async def test_finish_exercise_logs_sets_and_marks_done(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_unfinish_exercise_removes_logs(client: AsyncClient):
+async def test_finished_exercise_cannot_be_removed_from_calendar(client: AsyncClient):
     goal_id, entry_id, ex_id, session_id = await _mk_goal_with_session(client)
     await client.post(
         f"/goals/{goal_id}/sessions/{session_id}/exercises/{ex_id}/finish",
         json={"sets": [{"exercise_id": ex_id, "set_number": 1, "weight": 80, "reps": 10, "rir": 2}]},
     )
     resp = await client.post(f"/goals/{goal_id}/sessions/{session_id}/exercises/{ex_id}/unfinish")
-    assert resp.status_code == 200
-    assert resp.json()["set_logs"] == []
+    assert resp.status_code == 409
 
     exercises = (await client.get(f"/goals/{goal_id}/plans/{entry_id}/exercises/")).json()
-    assert exercises[0]["completed"] is False
+    assert exercises[0]["completed"] is True
+    history = await client.get(f"/goals/{goal_id}/sessions/log")
+    assert len(history.json()) == 1
 
 
 @pytest.mark.asyncio
@@ -187,6 +194,56 @@ async def test_exercise_log_feed(client: AsyncClient):
     assert item["total_reps"] == 16
     assert item["failure_sets"] == [2]
     assert item["sets"][1]["failure"] is True
+
+
+@pytest.mark.asyncio
+async def test_finished_history_survives_plan_and_exercise_deletion(client: AsyncClient):
+    goal_id, entry_id, ex_id, session_id = await _mk_goal_with_session(client)
+    await client.post(
+        f"/goals/{goal_id}/sessions/{session_id}/exercises/{ex_id}/finish",
+        json={"sets": [{"exercise_id": ex_id, "set_number": 1, "weight": 80, "reps": 10, "rir": 1}]},
+    )
+
+    # This removes the mutable plan exercise via cascade, but not its snapshot history.
+    assert (await client.delete(f"/goals/{goal_id}/plans/{entry_id}")).status_code == 204
+    history = await client.get(f"/goals/{goal_id}/sessions/log")
+    assert history.status_code == 200
+    assert len(history.json()) == 1
+    assert history.json()[0]["exercise_name"] == "Bench Press"
+    assert history.json()[0]["source_exercise_id"] is None
+    assert history.json()[0]["sets"][0]["weight"] == 80
+
+
+@pytest.mark.asyncio
+async def test_workout_tab_can_edit_set_count_values_and_date_then_delete(client: AsyncClient):
+    goal_id, _, ex_id, session_id = await _mk_goal_with_session(client)
+    await client.post(
+        f"/goals/{goal_id}/sessions/{session_id}/exercises/{ex_id}/finish",
+        json={"sets": [{"exercise_id": ex_id, "set_number": 1, "weight": 80, "reps": 10, "rir": 1}]},
+    )
+    item = (await client.get(f"/goals/{goal_id}/sessions/log")).json()[0]
+
+    updated = await client.patch(f"/goals/{goal_id}/sessions/log/{item['id']}", json={
+        "performed_at": "2026-08-20",
+        "exercise_name": "Edited Bench Press",
+        "sets": [
+            {"set_number": 1, "weight": 82.5, "reps": 9, "rir": 1},
+            {"set_number": 2, "weight": 82.5, "reps": 8, "rir": 0},
+            {"set_number": 3, "weight": 80, "reps": 10, "rir": 2},
+        ],
+    })
+    assert updated.status_code == 200
+    body = updated.json()
+    assert body["performed_at"] == "2026-08-20"
+    assert body["exercise_name"] == "Edited Bench Press"
+    assert len(body["sets"]) == 3
+    assert body["top_weight"] == 82.5
+    assert body["total_reps"] == 27
+    assert body["failure_sets"] == [2]
+
+    deleted = await client.delete(f"/goals/{goal_id}/sessions/log/{item['id']}")
+    assert deleted.status_code == 204
+    assert (await client.get(f"/goals/{goal_id}/sessions/log")).json() == []
 
 
 @pytest.mark.asyncio

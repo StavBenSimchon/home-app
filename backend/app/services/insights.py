@@ -10,7 +10,7 @@ from app.models.coach import AIInsight
 from app.models.exercise import Exercise
 from app.models.goal import Goal
 from app.models.plan import PlanEntry
-from app.models.session import SetLog, WorkoutSession
+from app.models.session import SetLog, WorkoutExerciseLog, WorkoutSession
 from app.models.weight import WeightEntry
 from app.schemas.progress import (
     ConsistencyStats,
@@ -82,30 +82,25 @@ async def gather_progress(session: AsyncSession, goal_id: uuid.UUID) -> Progress
             "completed": sum(1 for e in wk if e.completed),
         })
 
-    # strength trends
-    ex_result = await session.execute(
-        select(Exercise)
-        .join(PlanEntry, Exercise.plan_entry_id == PlanEntry.id)
-        .where(PlanEntry.goal_id == goal_id)
-    )
-    ex_names = {ex.id: ex.name for ex in ex_result.scalars()}
-
+    # Strength trends come from immutable exercise snapshots, not plan rows.
     sessions_result = await session.execute(
         select(WorkoutSession)
-        .options(selectinload(WorkoutSession.set_logs))
-        .join(PlanEntry, WorkoutSession.plan_entry_id == PlanEntry.id)
-        .where(PlanEntry.goal_id == goal_id)
+        .options(
+            selectinload(WorkoutSession.exercise_logs).selectinload(WorkoutExerciseLog.set_logs)
+        )
+        .where(WorkoutSession.goal_id == goal_id)
         .order_by(WorkoutSession.performed_at)
     )
     sessions_list = sessions_result.scalars().all()
 
-    by_exercise: dict[uuid.UUID, dict[date, list[SetLog]]] = defaultdict(lambda: defaultdict(list))
+    by_exercise: dict[str, dict[date, list[SetLog]]] = defaultdict(lambda: defaultdict(list))
     for ws in sessions_list:
-        for sl in ws.set_logs:
-            by_exercise[sl.exercise_id][ws.performed_at].append(sl)
+        for exercise_log in ws.exercise_logs:
+            if exercise_log.completed_at is not None:
+                by_exercise[exercise_log.exercise_name][exercise_log.performed_at].extend(exercise_log.set_logs)
 
     trends: list[ExerciseTrend] = []
-    for ex_id, by_date in by_exercise.items():
+    for exercise_name, by_date in by_exercise.items():
         points = []
         for d, sets in sorted(by_date.items()):
             weights = [s.weight for s in sets if s.weight is not None]
@@ -118,7 +113,7 @@ async def gather_progress(session: AsyncSession, goal_id: uuid.UUID) -> Progress
                 best_rir=min(rirs) if rirs else None,
                 set_count=len(sets),
             ))
-        trends.append(ExerciseTrend(exercise_name=ex_names.get(ex_id, "Exercise"), points=points))
+        trends.append(ExerciseTrend(exercise_name=exercise_name, points=points))
     trends.sort(key=lambda t: t.exercise_name)
 
     return ProgressResponse(
@@ -275,19 +270,13 @@ async def build_analysis_data(session: AsyncSession, goal_id: uuid.UUID) -> dict
 
     sessions_result = await session.execute(
         select(WorkoutSession)
-        .options(selectinload(WorkoutSession.set_logs))
-        .join(PlanEntry, WorkoutSession.plan_entry_id == PlanEntry.id)
-        .where(PlanEntry.goal_id == goal_id)
+        .options(
+            selectinload(WorkoutSession.exercise_logs).selectinload(WorkoutExerciseLog.set_logs)
+        )
+        .where(WorkoutSession.goal_id == goal_id)
         .order_by(WorkoutSession.performed_at)
     )
     sessions = sessions_result.scalars().all()
-
-    ex_result = await session.execute(
-        select(Exercise)
-        .join(PlanEntry, Exercise.plan_entry_id == PlanEntry.id)
-        .where(PlanEntry.goal_id == goal_id)
-    )
-    ex_names = {ex.id: ex.name for ex in ex_result.scalars()}
 
     weights_result = await session.execute(
         select(WeightEntry).order_by(WeightEntry.measured_at)
@@ -297,13 +286,17 @@ async def build_analysis_data(session: AsyncSession, goal_id: uuid.UUID) -> dict
     def window(days: int) -> dict:
         cutoff = today - timedelta(days=days)
         win_sessions = [ws for ws in sessions if ws.performed_at >= cutoff]
-        all_sets = [sl for ws in win_sessions for sl in ws.set_logs]
+        win_logs = [
+            log for ws in win_sessions for log in ws.exercise_logs
+            if log.completed_at is not None and log.performed_at >= cutoff
+        ]
+        all_sets = [sl for log in win_logs for sl in log.set_logs]
 
         # per-exercise detail inside the window
         per_ex: dict[str, dict] = {}
-        for ws in win_sessions:
-            for sl in ws.set_logs:
-                name = ex_names.get(sl.exercise_id, "Exercise")
+        for exercise_log in win_logs:
+            for sl in exercise_log.set_logs:
+                name = exercise_log.exercise_name
                 bucket = per_ex.setdefault(name, {
                     "exercise": name, "sessions": 0, "sets": 0, "volume_kg": 0.0,
                     "top_weight": None, "rirs": [], "failure_sets": 0, "dates": [],
@@ -316,8 +309,8 @@ async def build_analysis_data(session: AsyncSession, goal_id: uuid.UUID) -> dict
                     bucket["rirs"].append(sl.rir)
                     if sl.rir == 0:
                         bucket["failure_sets"] += 1
-                if str(ws.performed_at) not in bucket["dates"]:
-                    bucket["dates"].append(str(ws.performed_at))
+                if str(exercise_log.performed_at) not in bucket["dates"]:
+                    bucket["dates"].append(str(exercise_log.performed_at))
         for bucket in per_ex.values():
             bucket["sessions"] = len(bucket["dates"])
             bucket["volume_kg"] = round(bucket["volume_kg"], 1)
@@ -349,7 +342,7 @@ async def build_analysis_data(session: AsyncSession, goal_id: uuid.UUID) -> dict
 
         return {
             "days": days,
-            "workouts_logged": len(win_sessions),
+            "workouts_logged": len({log.session_id for log in win_logs}),
             "sets_logged": len(all_sets),
             "total_volume_kg": _volume(all_sets),
             "failure_sets": sum(1 for s in all_sets if s.rir == 0),
@@ -366,15 +359,15 @@ async def build_analysis_data(session: AsyncSession, goal_id: uuid.UUID) -> dict
     per_exercise_history: list[dict] = []
     by_ex: dict[str, list[dict]] = defaultdict(list)
     for ws in sessions:
-        grouped: dict[uuid.UUID, list[SetLog]] = defaultdict(list)
-        for sl in ws.set_logs:
-            grouped[sl.exercise_id].append(sl)
-        for ex_id, sets in grouped.items():
+        for exercise_log in ws.exercise_logs:
+            if exercise_log.completed_at is None:
+                continue
+            sets = exercise_log.set_logs
             weights_in_set = [s.weight for s in sets if s.weight is not None]
             rirs = [s.rir for s in sets if s.rir is not None]
             reps = [s.reps for s in sets if s.reps is not None]
-            by_ex[ex_names.get(ex_id, "Exercise")].append({
-                "date": str(ws.performed_at),
+            by_ex[exercise_log.exercise_name].append({
+                "date": str(exercise_log.performed_at),
                 "sets": len(sets),
                 "top_weight": max(weights_in_set) if weights_in_set else None,
                 "total_reps": sum(s.reps or 0 for s in sets),

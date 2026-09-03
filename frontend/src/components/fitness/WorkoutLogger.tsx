@@ -47,7 +47,11 @@ export default function WorkoutLogger({ goal, entry, onClose }: Props) {
           reps: log.reps ?? undefined,
           rir: log.rir ?? undefined,
         };
-        finished[log.exercise_id] = true;
+      }
+      for (const exerciseLog of ws.exercise_logs ?? []) {
+        if (exerciseLog.completed_at && exerciseLog.source_exercise_id) {
+          finished[exerciseLog.source_exercise_id] = true;
+        }
       }
       setDraft(hydrated);
       setDone(prev => ({ ...finished, ...prev }));
@@ -96,8 +100,9 @@ export default function WorkoutLogger({ goal, entry, onClose }: Props) {
     setError("");
     try {
       if (done[ex.id]) {
-        await api.unfinishExercise(goal.id, session.id, ex.id);
-        setDone(prev => ({ ...prev, [ex.id]: false }));
+        setExpanded(ex.id);
+        setBusy(prev => ({ ...prev, [ex.id]: false }));
+        return;
       } else {
         const sets = draftToSets(ex.id);
         if (sets.length === 0) {
@@ -230,8 +235,8 @@ export default function WorkoutLogger({ goal, entry, onClose }: Props) {
                       </div>
                     )}
                   </div>
-                  <button onClick={(e) => { e.stopPropagation(); toggleDone(ex); }} disabled={busy[ex.id]}
-                    title={isDone ? "Mark unfinished" : "Finish exercise"}
+                  <button onClick={(e) => { e.stopPropagation(); toggleDone(ex); }} disabled={busy[ex.id] || isDone}
+                    title={isDone ? "Logged — edit or delete it in the Workout tab" : "Finish exercise"}
                     style={{ background: "none", border: "none", padding: 0, cursor: "pointer", flexShrink: 0, opacity: busy[ex.id] ? 0.5 : 1 }}>
                     <svg width="24" height="24" viewBox="0 0 24 24" style={{ display: "block" }}>
                       <circle cx="12" cy="12" r="10" fill={isDone ? "#22c55e" : "none"} stroke={isDone ? "#22c55e" : "var(--border)"} strokeWidth="2" />
@@ -292,13 +297,13 @@ export default function WorkoutLogger({ goal, entry, onClose }: Props) {
                       RIR 0 = failure · 1 = ~1 rep left · 2 = ~2 left · 3+ = easy
                     </div>
                     {ex.notes && <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", marginTop: "0.35rem" }}>{ex.notes}</div>}
-                    <button onClick={() => toggleDone(ex)} disabled={busy[ex.id]}
+                    <button onClick={() => toggleDone(ex)} disabled={busy[ex.id] || isDone}
                       style={{
                         ...(isDone ? s.btnSecondary : s.btnPrimary),
                         width: "100%", marginTop: "0.6rem", padding: "0.5rem",
-                        opacity: busy[ex.id] ? 0.6 : 1,
+                        opacity: busy[ex.id] || isDone ? 0.6 : 1,
                       }}>
-                      {busy[ex.id] ? "Saving…" : isDone ? "Unmark exercise" : "Finish exercise ✓"}
+                      {busy[ex.id] ? "Saving…" : isDone ? "Logged in Workout tab ✓" : "Finish exercise ✓"}
                     </button>
                   </div>
                 )}

@@ -1,17 +1,19 @@
 import uuid
-from datetime import date
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_session
 from app.models.exercise import Exercise
 from app.models.plan import PlanEntry
-from app.models.session import SetLog, WorkoutSession
+from app.models.session import SetLog, WorkoutExerciseLog, WorkoutSession
 from app.schemas.session import (
+    EditableLoggedSet,
     ExerciseLogItem,
+    ExerciseLogUpdate,
     FinishExerciseRequest,
     LoggedSet,
     LogSetRequest,
@@ -38,7 +40,10 @@ async def _get_entry(goal_id: uuid.UUID, entry_id: uuid.UUID, session: AsyncSess
 async def _load_session(db: AsyncSession, session_id: uuid.UUID) -> WorkoutSession:
     result = await db.execute(
         select(WorkoutSession)
-        .options(selectinload(WorkoutSession.set_logs))
+        .options(
+            selectinload(WorkoutSession.set_logs),
+            selectinload(WorkoutSession.exercise_logs).selectinload(WorkoutExerciseLog.set_logs),
+        )
         .where(WorkoutSession.id == session_id)
         .execution_options(populate_existing=True)
     )
@@ -50,8 +55,56 @@ async def _load_session(db: AsyncSession, session_id: uuid.UUID) -> WorkoutSessi
 
 async def _get_session(goal_id: uuid.UUID, session_id: uuid.UUID, db: AsyncSession) -> WorkoutSession:
     ws = await _load_session(db, session_id)
-    await _get_entry(goal_id, ws.plan_entry_id, db)  # ownership check
+    if ws.goal_id != goal_id:
+        raise HTTPException(status_code=404, detail="Session not found")
     return ws
+
+
+async def _get_exercise_log(
+    goal_id: uuid.UUID,
+    exercise_log_id: uuid.UUID,
+    session: AsyncSession,
+) -> WorkoutExerciseLog:
+    result = await session.execute(
+        select(WorkoutExerciseLog)
+        .options(
+            selectinload(WorkoutExerciseLog.set_logs),
+            selectinload(WorkoutExerciseLog.session),
+        )
+        .join(WorkoutSession, WorkoutExerciseLog.session_id == WorkoutSession.id)
+        .where(WorkoutExerciseLog.id == exercise_log_id, WorkoutSession.goal_id == goal_id)
+        .execution_options(populate_existing=True)
+    )
+    log = result.scalar_one_or_none()
+    if not log:
+        raise HTTPException(status_code=404, detail="Exercise log not found")
+    return log
+
+
+def _log_response(log: WorkoutExerciseLog) -> ExerciseLogItem:
+    sets = [
+        LoggedSet(
+            set_number=sl.set_number,
+            weight=sl.weight,
+            reps=sl.reps,
+            rir=sl.rir,
+            failure=sl.rir == 0,
+        )
+        for sl in sorted(log.set_logs, key=lambda item: item.set_number)
+    ]
+    weights = [item.weight for item in sets if item.weight is not None]
+    return ExerciseLogItem(
+        id=log.id,
+        session_id=log.session_id,
+        source_exercise_id=log.source_exercise_id,
+        exercise_name=log.exercise_name,
+        activity=log.session.activity_name,
+        performed_at=log.performed_at,
+        sets=sets,
+        top_weight=max(weights) if weights else None,
+        total_reps=sum(item.reps or 0 for item in sets),
+        failure_sets=[item.set_number for item in sets if item.failure],
+    )
 
 
 @router.get("/log", response_model=list[ExerciseLogItem])
@@ -60,48 +113,72 @@ async def exercise_log(
     limit: int = 100,
     session: AsyncSession = Depends(get_session),
 ):
-    """Feed of logged (finished) exercises — the Workout tab's history."""
+    """Finished exercise snapshots. Mutable plan rows are not involved."""
     result = await session.execute(
-        select(WorkoutSession, SetLog, Exercise, PlanEntry)
-        .join(SetLog, SetLog.session_id == WorkoutSession.id)
-        .join(Exercise, Exercise.id == SetLog.exercise_id)
-        .join(PlanEntry, PlanEntry.id == WorkoutSession.plan_entry_id)
-        .where(PlanEntry.goal_id == goal_id)
-        .order_by(WorkoutSession.performed_at.desc(), Exercise.order_index, SetLog.set_number)
+        select(WorkoutExerciseLog)
+        .options(
+            selectinload(WorkoutExerciseLog.set_logs),
+            selectinload(WorkoutExerciseLog.session),
+        )
+        .join(WorkoutSession, WorkoutExerciseLog.session_id == WorkoutSession.id)
+        .where(
+            WorkoutSession.goal_id == goal_id,
+            WorkoutExerciseLog.completed_at.is_not(None),
+        )
+        .order_by(WorkoutExerciseLog.performed_at.desc(), WorkoutExerciseLog.exercise_name)
+        .limit(limit)
     )
+    return [_log_response(item) for item in result.scalars()]
 
-    grouped: dict[tuple[uuid.UUID, uuid.UUID], dict] = {}
-    for ws, sl, ex, entry in result.all():
-        key = (ws.id, ex.id)
-        item = grouped.setdefault(key, {
-            "session_id": ws.id,
-            "exercise_id": ex.id,
-            "exercise_name": ex.name,
-            "activity": entry.activity,
-            "performed_at": ws.performed_at,
-            "sets": [],
-        })
-        item["sets"].append(LoggedSet(
-            set_number=sl.set_number,
-            weight=sl.weight,
-            reps=sl.reps,
-            rir=sl.rir,
-            failure=sl.rir == 0,
-        ))
 
-    items: list[ExerciseLogItem] = []
-    for data in grouped.values():
-        sets = sorted(data["sets"], key=lambda s: s.set_number)
-        weights = [s.weight for s in sets if s.weight is not None]
-        items.append(ExerciseLogItem(
-            **{**data, "sets": sets},
-            top_weight=max(weights) if weights else None,
-            total_reps=sum(s.reps or 0 for s in sets),
-            failure_sets=[s.set_number for s in sets if s.failure],
-        ))
+@router.patch("/log/{exercise_log_id}", response_model=ExerciseLogItem)
+async def update_exercise_log(
+    goal_id: uuid.UUID,
+    exercise_log_id: uuid.UUID,
+    payload: ExerciseLogUpdate,
+    session: AsyncSession = Depends(get_session),
+):
+    """Edit a history snapshot explicitly from the Workout tab."""
+    log = await _get_exercise_log(goal_id, exercise_log_id, session)
+    if payload.performed_at is not None:
+        log.performed_at = payload.performed_at
+    if payload.exercise_name is not None:
+        name = payload.exercise_name.strip()
+        if not name:
+            raise HTTPException(status_code=422, detail="Exercise name cannot be empty")
+        log.exercise_name = name
+    if payload.sets is not None:
+        await session.execute(delete(SetLog).where(SetLog.exercise_log_id == log.id))
+        await session.flush()
+        seen: set[int] = set()
+        for item in sorted(payload.sets, key=lambda row: row.set_number):
+            if item.set_number in seen:
+                raise HTTPException(status_code=422, detail="Set numbers must be unique")
+            seen.add(item.set_number)
+            session.add(SetLog(
+                session_id=log.session_id,
+                exercise_log_id=log.id,
+                exercise_id=log.source_exercise_id,
+                set_number=item.set_number,
+                weight=item.weight,
+                reps=item.reps,
+                rir=item.rir,
+            ))
+    await session.commit()
+    updated = await _get_exercise_log(goal_id, exercise_log_id, session)
+    return _log_response(updated)
 
-    items.sort(key=lambda i: (i.performed_at, i.exercise_name), reverse=True)
-    return items[:limit]
+
+@router.delete("/log/{exercise_log_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_exercise_log(
+    goal_id: uuid.UUID,
+    exercise_log_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+):
+    """The only API that deletes a finished exercise and its set history."""
+    log = await _get_exercise_log(goal_id, exercise_log_id, session)
+    await session.delete(log)
+    await session.commit()
 
 
 @router.post("/entries/{entry_id}", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)
@@ -111,21 +188,31 @@ async def open_session(
     payload: SessionStartRequest,
     session: AsyncSession = Depends(get_session),
 ):
-    """Open (or reuse) the session for this plan entry on the given day."""
-    await _get_entry(goal_id, entry_id, session)
+    entry = await _get_entry(goal_id, entry_id, session)
     performed_at = payload.performed_at or date.today()
-
     existing = await session.execute(
         select(WorkoutSession)
-        .options(selectinload(WorkoutSession.set_logs))
-        .where(WorkoutSession.plan_entry_id == entry_id, WorkoutSession.performed_at == performed_at)
+        .options(
+            selectinload(WorkoutSession.set_logs),
+            selectinload(WorkoutSession.exercise_logs).selectinload(WorkoutExerciseLog.set_logs),
+        )
+        .where(
+            WorkoutSession.goal_id == goal_id,
+            WorkoutSession.plan_entry_id == entry_id,
+            WorkoutSession.performed_at == performed_at,
+        )
         .order_by(WorkoutSession.created_at)
     )
     ws = existing.scalars().first()
     if ws:
         return ws
 
-    ws = WorkoutSession(plan_entry_id=entry_id, performed_at=performed_at)
+    ws = WorkoutSession(
+        goal_id=goal_id,
+        plan_entry_id=entry_id,
+        activity_name=entry.activity,
+        performed_at=performed_at,
+    )
     session.add(ws)
     await session.commit()
     return await _load_session(session, ws.id)
@@ -140,42 +227,86 @@ async def previous_performance(
     session: AsyncSession = Depends(get_session),
 ):
     await _get_entry(goal_id, entry_id, session)
+    exercise = await session.get(Exercise, exercise_id)
+    if not exercise or exercise.plan_entry_id != entry_id:
+        raise HTTPException(status_code=404, detail="Exercise not found")
     query = (
-        select(WorkoutSession)
-        .options(selectinload(WorkoutSession.set_logs))
-        .join(PlanEntry, PlanEntry.id == WorkoutSession.plan_entry_id)
-        .where(PlanEntry.goal_id == goal_id)
-        .order_by(WorkoutSession.performed_at.desc())
+        select(WorkoutExerciseLog)
+        .options(selectinload(WorkoutExerciseLog.set_logs))
+        .join(WorkoutSession, WorkoutExerciseLog.session_id == WorkoutSession.id)
+        .where(
+            WorkoutSession.goal_id == goal_id,
+            func.lower(WorkoutExerciseLog.exercise_name) == exercise.name.lower(),
+            WorkoutExerciseLog.completed_at.is_not(None),
+        )
+        .order_by(WorkoutExerciseLog.performed_at.desc())
     )
     if before:
-        query = query.where(WorkoutSession.performed_at < before)
-    result = await session.execute(query)
-    for ws in result.scalars():
-        sets = [sl for sl in ws.set_logs if sl.exercise_id == exercise_id]
-        if not sets:
-            continue
-        return PreviousPerformance(
-            exercise_id=exercise_id,
-            performed_at=ws.performed_at,
-            sets=[
-                PreviousSet(set_number=sl.set_number, weight=sl.weight, reps=sl.reps, rir=sl.rir)
-                for sl in sorted(sets, key=lambda s: s.set_number)
-            ],
+        query = query.where(WorkoutExerciseLog.performed_at < before)
+    log = (await session.execute(query)).scalars().first()
+    if not log:
+        return None
+    return PreviousPerformance(
+        exercise_id=exercise_id,
+        performed_at=log.performed_at,
+        sets=[
+            PreviousSet(set_number=sl.set_number, weight=sl.weight, reps=sl.reps, rir=sl.rir)
+            for sl in sorted(log.set_logs, key=lambda item: item.set_number)
+        ],
+    )
+
+
+async def _get_or_create_exercise_log(
+    session: AsyncSession,
+    ws: WorkoutSession,
+    exercise: Exercise,
+) -> WorkoutExerciseLog:
+    result = await session.execute(
+        select(WorkoutExerciseLog).where(
+            WorkoutExerciseLog.session_id == ws.id,
+            WorkoutExerciseLog.source_exercise_id == exercise.id,
         )
-    return None
+    )
+    log = result.scalar_one_or_none()
+    if log:
+        return log
+    log = WorkoutExerciseLog(
+        session_id=ws.id,
+        source_exercise_id=exercise.id,
+        exercise_name=exercise.name,
+        performed_at=ws.performed_at,
+        order_index=exercise.order_index,
+        target_sets=exercise.sets,
+        target_reps=exercise.reps,
+        target_reps_max=exercise.reps_max,
+        target_weight=exercise.weight,
+        target_rir=exercise.rir_target,
+    )
+    session.add(log)
+    await session.flush()
+    return log
 
 
-async def _upsert_set(db: AsyncSession, session_id: uuid.UUID, item: SetLogWrite) -> SetLog:
+async def _upsert_set(
+    db: AsyncSession,
+    ws: WorkoutSession,
+    exercise_log: WorkoutExerciseLog,
+    item: SetLogWrite,
+) -> SetLog:
     result = await db.execute(
         select(SetLog).where(
-            SetLog.session_id == session_id,
-            SetLog.exercise_id == item.exercise_id,
+            SetLog.exercise_log_id == exercise_log.id,
             SetLog.set_number == item.set_number,
         )
     )
     sl = result.scalar_one_or_none()
     if sl is None:
-        sl = SetLog(session_id=session_id, exercise_id=item.exercise_id, set_number=item.set_number)
+        sl = SetLog(
+            session_id=ws.id,
+            exercise_log_id=exercise_log.id,
+            exercise_id=exercise_log.source_exercise_id,
+            set_number=item.set_number,
+        )
         db.add(sl)
     sl.weight = item.weight
     sl.reps = item.reps
@@ -185,20 +316,24 @@ async def _upsert_set(db: AsyncSession, session_id: uuid.UUID, item: SetLogWrite
 
 
 async def _write_sets(session: AsyncSession, ws: WorkoutSession, sets: list[SetLogWrite]) -> int:
-    exercise_ids = {s.exercise_id for s in sets}
+    exercise_ids = {item.exercise_id for item in sets}
     if not exercise_ids:
         return 0
     result = await session.execute(select(Exercise).where(Exercise.id.in_(exercise_ids)))
-    exercises = {e.id: e for e in result.scalars()}
-
+    exercises = {exercise.id: exercise for exercise in result.scalars()}
+    exercise_logs: dict[uuid.UUID, WorkoutExerciseLog] = {}
     written = 0
     for item in sets:
-        ex = exercises.get(item.exercise_id)
-        if not ex or ex.plan_entry_id != ws.plan_entry_id:
+        exercise = exercises.get(item.exercise_id)
+        if not exercise or exercise.plan_entry_id != ws.plan_entry_id:
             raise HTTPException(status_code=422, detail="Exercise does not belong to this session's plan entry")
         if item.weight is None and item.reps is None and item.rir is None:
             continue
-        await _upsert_set(session, ws.id, item)
+        exercise_log = exercise_logs.get(exercise.id)
+        if not exercise_log:
+            exercise_log = await _get_or_create_exercise_log(session, ws, exercise)
+            exercise_logs[exercise.id] = exercise_log
+        await _upsert_set(session, ws, exercise_log, item)
         written += 1
     return written
 
@@ -224,15 +359,15 @@ async def finish_exercise(
     payload: FinishExerciseRequest,
     session: AsyncSession = Depends(get_session),
 ):
-    """Log the entered sets for one exercise and mark it done."""
     ws = await _get_session(goal_id, session_id, session)
-    ex = await session.get(Exercise, exercise_id)
-    if not ex or ex.plan_entry_id != ws.plan_entry_id:
+    exercise = await session.get(Exercise, exercise_id)
+    if not exercise or exercise.plan_entry_id != ws.plan_entry_id:
         raise HTTPException(status_code=404, detail="Exercise not found in this workout")
-
-    sets = [s for s in payload.sets if s.exercise_id == exercise_id]
+    sets = [item for item in payload.sets if item.exercise_id == exercise_id]
     await _write_sets(session, ws, sets)
-    ex.completed = True
+    log = await _get_or_create_exercise_log(session, ws, exercise)
+    log.completed_at = datetime.now(timezone.utc)
+    exercise.completed = True
     await session.commit()
     return await _load_session(session, ws.id)
 
@@ -244,18 +379,11 @@ async def unfinish_exercise(
     exercise_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
 ):
-    """Undo: drop this exercise's logged sets for the session so the log stays truthful."""
-    ws = await _get_session(goal_id, session_id, session)
-    ex = await session.get(Exercise, exercise_id)
-    if not ex or ex.plan_entry_id != ws.plan_entry_id:
-        raise HTTPException(status_code=404, detail="Exercise not found in this workout")
-
-    await session.execute(
-        delete(SetLog).where(SetLog.session_id == ws.id, SetLog.exercise_id == exercise_id)
+    await _get_session(goal_id, session_id, session)
+    raise HTTPException(
+        status_code=409,
+        detail="Finished exercise history is immutable here. Edit or delete it explicitly in the Workout tab.",
     )
-    ex.completed = False
-    await session.commit()
-    return await _load_session(session, ws.id)
 
 
 @router.post("/{session_id}/complete", response_model=SessionResponse)
@@ -266,8 +394,9 @@ async def complete_session(
 ):
     ws = await _get_session(goal_id, session_id, session)
     ws.status = "completed"
-    entry = await session.get(PlanEntry, ws.plan_entry_id)
-    if entry:
-        entry.completed = True
+    if ws.plan_entry_id:
+        entry = await session.get(PlanEntry, ws.plan_entry_id)
+        if entry:
+            entry.completed = True
     await session.commit()
     return await _load_session(session, ws.id)

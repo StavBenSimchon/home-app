@@ -9,10 +9,9 @@ from sqlalchemy.orm import selectinload
 
 from app.database import get_session
 from app.models.coach import CoachMessage
-from app.models.exercise import Exercise
 from app.models.goal import Goal
 from app.models.plan import PlanEntry
-from app.models.session import SetLog, WorkoutSession
+from app.models.session import WorkoutExerciseLog, WorkoutSession
 from app.models.weight import WeightEntry
 from app.services.ai_service import coach_finalize, coach_reply, plan_summary
 
@@ -84,9 +83,10 @@ async def _load_context(session: AsyncSession, goal: Goal) -> dict:
 
     sessions_result = await session.execute(
         select(WorkoutSession)
-        .options(selectinload(WorkoutSession.set_logs))
-        .join(PlanEntry, WorkoutSession.plan_entry_id == PlanEntry.id)
-        .where(PlanEntry.goal_id == goal.id)
+        .options(
+            selectinload(WorkoutSession.exercise_logs).selectinload(WorkoutExerciseLog.set_logs)
+        )
+        .where(WorkoutSession.goal_id == goal.id)
         .order_by(WorkoutSession.performed_at.desc())
         .limit(8)
     )
@@ -94,12 +94,19 @@ async def _load_context(session: AsyncSession, goal: Goal) -> dict:
     for ws in sessions_result.scalars():
         recent.append({
             "performed_at": str(ws.performed_at),
-            "plan_entry_id": str(ws.plan_entry_id),
+            "activity": ws.activity_name,
             "status": ws.status,
-            "sets": [
-                {"exercise_id": str(sl.exercise_id), "set_number": sl.set_number,
-                 "weight": sl.weight, "reps": sl.reps, "rir": sl.rir}
-                for sl in ws.set_logs
+            "exercises": [
+                {
+                    "name": log.exercise_name,
+                    "performed_at": str(log.performed_at),
+                    "sets": [
+                        {"set_number": sl.set_number, "weight": sl.weight,
+                         "reps": sl.reps, "rir": sl.rir}
+                        for sl in log.set_logs
+                    ],
+                }
+                for log in ws.exercise_logs if log.completed_at is not None
             ],
         })
 
