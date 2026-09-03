@@ -74,6 +74,8 @@ Rules:
 - Every STRENGTH workout MUST include the "exercises" array (name, sets, reps..reps_max, weight, rir_target).
 - For walking, cardio, or recovery: emit separate entries with duration_minutes and exercises: [].
 - Include ALL weeks of the plan (weeks 1..12) and ALL activities, modified based on the conversation.
+- Treat completed workouts, logged exercises, set logs, and prior calendar entries as immutable history.
+- Apply requested changes to unstarted current/future workouts only.
 """
 
 COACH_PROMPT = """You are the user's personal AI fitness coach, deeply connected to their data.
@@ -88,7 +90,12 @@ Talk like a coach: concise, data-grounded, concrete. Reference their actual numb
 
 When the user asks for a program change (swap an exercise, train fewer/more days, shorter sessions,
 add cardio, equipment changes, etc.): confirm what you'll change in plain language and tell them to
-press "Finalize plan" to apply it to their calendar. Do NOT output JSON in this conversation."""
+press "Finalize plan" to apply it to their calendar. Do NOT output JSON in this conversation.
+
+HISTORY GUARDRAIL:
+- Completed workouts, logged exercises, set logs, weights, reps, RIR, and past calendar entries are immutable history.
+- Never claim that finalizing will edit or delete prior workout data.
+- Program changes apply only to unstarted current/future workouts."""
 
 INSIGHTS_PROMPT = """You are an AI fitness coach analysing a user's actual training and body data.
 
@@ -531,7 +538,8 @@ async def coach_finalize(user_message: str, context: dict, history: list[dict]) 
             "If a day contains multiple activities (e.g. lifting workout AND daily walking, or HIIT AND walking), "
             "emit EACH activity as its own separate object in the 'plan' array with the corresponding week_number and day_of_week.\n"
             "Never hide activities in notes or combine them into a single string.\n"
-            "Every strength workout MUST include an 'exercises' array with sets, reps, rir_target."
+            "Every strength workout MUST include an 'exercises' array with sets, reps, rir_target.\n"
+            "Do not rewrite prior/completed workouts or logged exercise history; changes are for unstarted current/future workouts."
         )
         if extra:
             instructions += f"\n\n{extra}"
@@ -561,7 +569,9 @@ async def update_goal_with_plan(ai_output: dict, session, goal_id, raw_json: dic
     from app.models.goal import Goal
     from app.models.plan import PlanEntry
     from app.models.exercise import Exercise
-    from sqlalchemy import delete
+    from app.models.session import WorkoutSession
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
 
     goal = await session.get(Goal, goal_id)
     if not goal:
@@ -569,6 +579,45 @@ async def update_goal_with_plan(ai_output: dict, session, goal_id, raw_json: dic
 
     goal_data = ai_output["goal"]
     plan_entries = _parse_plan_items(ai_output.get("plan", []))
+
+    # Finalize is a future-program operation, never a history rewrite. The old
+    # implementation deleted every PlanEntry, which cascaded into exercises,
+    # workout sessions, and set logs. Classify existing rows before changing
+    # any goal dates so historical dates remain stable.
+    existing_result = await session.execute(
+        select(PlanEntry)
+        .options(selectinload(PlanEntry.exercises))
+        .where(PlanEntry.goal_id == goal_id)
+    )
+    existing_entries = list(existing_result.scalars())
+    session_result = await session.execute(
+        select(WorkoutSession.plan_entry_id)
+        .join(PlanEntry, WorkoutSession.plan_entry_id == PlanEntry.id)
+        .where(PlanEntry.goal_id == goal_id)
+    )
+    entry_ids_with_sessions = set(session_result.scalars())
+
+    original_start = goal.start_date or normalize_start_date(None)
+    today = date.today()
+    active_week = max(1, (today - original_start).days // 7 + 1)
+
+    def scheduled_date(entry: PlanEntry) -> date | None:
+        if entry.day_of_week is None:
+            return None
+        return original_start + timedelta(days=(entry.week_number - 1) * 7 + entry.day_of_week)
+
+    preserved_entries: list[PlanEntry] = []
+    replaceable_entries: list[PlanEntry] = []
+    for entry in existing_entries:
+        entry_date = scheduled_date(entry)
+        is_history = (
+            entry.id in entry_ids_with_sessions
+            or entry.completed
+            or any(ex.completed for ex in entry.exercises)
+            or entry.week_number < active_week
+            or (entry_date is not None and entry_date < today)
+        )
+        (preserved_entries if is_history else replaceable_entries).append(entry)
 
     if goal_data.get("title"):
         goal.title = goal_data["title"]
@@ -582,24 +631,63 @@ async def update_goal_with_plan(ai_output: dict, session, goal_id, raw_json: dic
         goal.target_value = goal_data["target_value"]
     if goal_data.get("unit") is not None:
         goal.unit = goal_data["unit"]
-    goal.start_date = normalize_start_date(to_date(goal_data.get("start_date")) or goal.start_date)
+    # Once a plan exists, moving its start date would also move historical
+    # calendar meaning. Only initial plan creation may set it.
+    if not existing_entries:
+        goal.start_date = normalize_start_date(to_date(goal_data.get("start_date")) or goal.start_date)
+    else:
+        goal.start_date = original_start
     if goal_data.get("target_date"):
         goal.target_date = to_date(goal_data["target_date"])
     goal.ai_response = raw_json
 
-    await session.execute(
-        delete(PlanEntry).where(PlanEntry.goal_id == goal_id)
-    )
+    # Delete only unstarted current/future rows. Cascades are safe here because
+    # rows with any WorkoutSession were classified as immutable above.
+    for entry in replaceable_entries:
+        await session.delete(entry)
     await session.flush()
+
+    def activity_kind(activity: str, exercises: list | None = None) -> str:
+        text = activity.lower()
+        if "walk" in text or "step" in text:
+            return "walk"
+        if any(word in text for word in ("hiit", "cardio", "run", "jog", "bike", "rower")):
+            return "cardio"
+        if exercises or _looks_strength(activity):
+            return "strength"
+        return "other"
+
+    preserved_exact = {
+        (entry.week_number, entry.day_of_week, entry.activity.strip().lower())
+        for entry in preserved_entries
+    }
+    preserved_slots = {
+        (entry.week_number, entry.day_of_week, activity_kind(entry.activity, entry.exercises))
+        for entry in preserved_entries
+    }
 
     entries = []
     for pe in plan_entries:
         exercises_data = pe.get("exercises", []) or []
+        week_number = int(pe.get("week_number") or 1)
+        day_of_week = pe.get("day_of_week")
+        activity = str(pe.get("activity") or "Activity")
+
+        # AI returns the full timeline, but past rows already in the DB are the
+        # source of truth. Logged/completed slots in the active week are also
+        # immutable even if the AI renamed the workout.
+        if week_number < active_week:
+            continue
+        exact_key = (week_number, day_of_week, activity.strip().lower())
+        slot_key = (week_number, day_of_week, activity_kind(activity, exercises_data))
+        if exact_key in preserved_exact or slot_key in preserved_slots:
+            continue
+
         entry = PlanEntry(
             goal_id=goal.id,
-            week_number=pe.get("week_number", 1),
-            day_of_week=pe.get("day_of_week"),
-            activity=pe.get("activity", "Activity"),
+            week_number=week_number,
+            day_of_week=day_of_week,
+            activity=activity,
             duration_minutes=pe.get("duration_minutes"),
             notes=pe.get("notes"),
             frequency_hint=pe.get("frequency_hint"),
@@ -649,5 +737,6 @@ async def update_goal_with_plan(ai_output: dict, session, goal_id, raw_json: dic
             "target_date": str(goal.target_date) if goal.target_date else None,
         },
         "entries": entries,
+        "history_preserved": len(preserved_entries),
     }
 

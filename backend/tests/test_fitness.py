@@ -206,6 +206,68 @@ async def test_finish_rejects_foreign_exercise(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_finalize_preserves_logged_history_and_replaces_future_plan(client: AsyncClient, session):
+    """Regression: finalizing must never cascade-delete WorkoutSession/SetLog rows."""
+    import uuid as _uuid
+
+    from app.services.ai_service import update_goal_with_plan
+
+    goal_id, entry_id, ex_id, session_id = await _mk_goal_with_session(client)
+    await client.post(
+        f"/goals/{goal_id}/sessions/{session_id}/exercises/{ex_id}/finish",
+        json={"sets": [
+            {"exercise_id": ex_id, "set_number": 1, "weight": 80, "reps": 10, "rir": 2},
+            {"exercise_id": ex_id, "set_number": 2, "weight": 80, "reps": 9, "rir": 1},
+        ]},
+    )
+    future = (await client.post(f"/goals/{goal_id}/plans/", json={
+        "goal_id": goal_id, "week_number": 2, "day_of_week": 0, "activity": "Old Future Workout",
+    })).json()
+    await client.post(f"/goals/{goal_id}/plans/{future['id']}/exercises/", json={
+        "plan_entry_id": future["id"], "name": "Old Future Exercise", "sets": 3,
+        "reps": 8, "reps_max": 10, "weight": 50, "rir_target": 2,
+    })
+
+    output = {
+        "goal": {"title": "Updated Goal"},
+        "plan": [
+            {
+                "week_number": 1, "day_of_week": 0, "activity": "Renamed Current Workout",
+                "duration_minutes": 45,
+                "exercises": [{"name": "Replacement Bench", "sets": 3, "reps": 8, "reps_max": 10}],
+            },
+            {
+                "week_number": 2, "day_of_week": 0, "activity": "New Future Workout",
+                "duration_minutes": 45,
+                "exercises": [{"name": "New Future Exercise", "sets": 3, "reps": 10, "reps_max": 12}],
+            },
+        ],
+    }
+    result = await update_goal_with_plan(output, session, _uuid.UUID(goal_id), raw_json=output)
+    assert result["history_preserved"] == 1
+
+    # Logged entry/exercise and the Workout tab feed survive unchanged.
+    logged_entry = await client.get(f"/goals/{goal_id}/plans/{entry_id}")
+    assert logged_entry.status_code == 200
+    assert logged_entry.json()["activity"] == "Workout A — Upper"
+    logged_exercises = await client.get(f"/goals/{goal_id}/plans/{entry_id}/exercises/")
+    assert any(e["id"] == ex_id and e["name"] == "Bench Press" for e in logged_exercises.json())
+    history = await client.get(f"/goals/{goal_id}/sessions/log")
+    assert history.status_code == 200
+    assert len(history.json()) == 1
+    assert history.json()[0]["exercise_name"] == "Bench Press"
+    assert len(history.json()[0]["sets"]) == 2
+
+    # Unstarted future rows are replaced, not accumulated.
+    assert (await client.get(f"/goals/{goal_id}/plans/{future['id']}")).status_code == 404
+    plan = (await client.get(f"/goals/{goal_id}/plans/")).json()
+    week2 = [entry for entry in plan if entry["week_number"] == 2]
+    assert len(week2) == 1
+    assert week2[0]["activity"] == "New Future Workout"
+    assert week2[0]["exercises"][0]["name"] == "New Future Exercise"
+
+
+@pytest.mark.asyncio
 async def test_analysis_data_crosses_windows(client: AsyncClient, session):
     """7/14-day windows must aggregate logged sets, volume, failures and adherence."""
     goal_id, entry_id, ex_id, session_id = await _mk_goal_with_session(client)
