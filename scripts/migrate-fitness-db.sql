@@ -137,6 +137,16 @@ WHERE wel.session_id = sl.session_id
   AND wel.source_exercise_id = sl.exercise_id
   AND sl.exercise_log_id IS NULL;
 
+-- Legacy versions displayed every persisted set in the Workout tab, even
+-- when its session remained in_progress. Preserve that visible history by
+-- promoting every backfilled snapshot containing legacy sets to completed.
+UPDATE workout_exercise_logs wel
+SET completed_at = COALESCE(wel.updated_at, NOW())
+WHERE wel.completed_at IS NULL
+  AND EXISTS (
+      SELECT 1 FROM set_logs sl WHERE sl.exercise_log_id = wel.id
+  );
+
 ALTER TABLE set_logs ALTER COLUMN exercise_id DROP NOT NULL;
 ALTER TABLE set_logs DROP CONSTRAINT IF EXISTS set_logs_exercise_id_fkey;
 ALTER TABLE set_logs
