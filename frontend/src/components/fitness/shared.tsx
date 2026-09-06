@@ -14,9 +14,12 @@ const TODAY_DATE = `${NOW.getDate()}/${NOW.getMonth() + 1}`;
 
 function getCurrentWeek(startDate: string | null): number {
   if (!startDate) return 1;
-  const start = new Date(startDate);
-  const diff = Math.floor((Date.now() - start.getTime()) / 86400000);
-  return Math.max(1, Math.floor(diff / 7) + 1);
+  const [y, m, d] = startDate.split("-").map(Number);
+  const start = new Date(y, m - 1, d);
+  const now = new Date();
+  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const diffDays = Math.round((todayMidnight.getTime() - start.getTime()) / 86400000);
+  return Math.max(1, Math.floor(diffDays / 7) + 1);
 }
 
 export { DAYS, NOW, TODAY_DOW_DB, TODAY_DATE, getCurrentWeek, SPINNER };

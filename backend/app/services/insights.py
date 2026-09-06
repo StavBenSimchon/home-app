@@ -31,7 +31,9 @@ def current_week(goal: Goal | None) -> int:
 def _entry_date(goal: Goal, entry: PlanEntry) -> date | None:
     if not goal.start_date or entry.day_of_week is None:
         return None
-    return goal.start_date + timedelta(days=(entry.week_number - 1) * 7 + entry.day_of_week)
+    # Plans start on Sunday. DB day_of_week is 0=Mon..5=Sat, 6=Sun.
+    day_offset = (entry.day_of_week + 1) % 7
+    return goal.start_date + timedelta(days=(entry.week_number - 1) * 7 + day_offset)
 
 
 def _streak(entries: list[PlanEntry], goal: Goal | None) -> int:

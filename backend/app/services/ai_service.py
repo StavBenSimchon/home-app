@@ -238,12 +238,15 @@ def to_date(val: str | None) -> date | None:
 
 
 def normalize_start_date(value: date | None) -> date:
-    """Plans always start on a Monday, and never in the past (calendar weeks must line up)."""
+    """Plans start on a Sunday. Snaps to the Sunday of the given week."""
     today = date.today()
-    monday_this_week = today - timedelta(days=today.weekday())
-    if value is None or value < monday_this_week:
-        return monday_this_week
-    return value - timedelta(days=value.weekday())
+    sunday_this_week = today - timedelta(days=(today.weekday() + 1) % 7)
+    if value is None:
+        return sunday_this_week
+    sunday_of_value = value - timedelta(days=(value.weekday() + 1) % 7)
+    if (today - sunday_of_value).days > 60:
+        return sunday_this_week
+    return sunday_of_value
 
 
 def _exercise_payload(ed: dict) -> dict:
@@ -604,7 +607,8 @@ async def update_goal_with_plan(ai_output: dict, session, goal_id, raw_json: dic
     def scheduled_date(entry: PlanEntry) -> date | None:
         if entry.day_of_week is None:
             return None
-        return original_start + timedelta(days=(entry.week_number - 1) * 7 + entry.day_of_week)
+        day_offset = (entry.day_of_week + 1) % 7
+        return original_start + timedelta(days=(entry.week_number - 1) * 7 + day_offset)
 
     preserved_entries: list[PlanEntry] = []
     replaceable_entries: list[PlanEntry] = []
@@ -739,4 +743,3 @@ async def update_goal_with_plan(ai_output: dict, session, goal_id, raw_json: dic
         "entries": entries,
         "history_preserved": len(preserved_entries),
     }
-

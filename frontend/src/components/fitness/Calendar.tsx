@@ -19,14 +19,14 @@ export default function Calendar({ goal, entries, onToggle, refresh }: Props) {
   const DOW = (new Date().getDay() + 6) % 7; // 0=Mon..6=Sun, same as db
   const dateStr = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
   const currentWeek = getCurrentWeek(goal.start_date);
-  const startDate = goal.start_date ? new Date(goal.start_date) : null;
   const weeks = [...new Set(entries.map(e => e.week_number))].sort((a, b) => a - b);
 
-  function dayDate(weekNum: number, dayDow: number): string {
-    if (!startDate) return "";
-    const offset = (weekNum - 1) * 7 + dayDow;
-    const d = new Date(startDate.getTime() + offset * 86400000);
-    return `${d.getDate()}/${d.getMonth() + 1}`;
+  function dayDate(weekNum: number, colIdx: number): string {
+    if (!goal?.start_date) return "";
+    const [y, m, d] = goal.start_date.split("-").map(Number);
+    const base = new Date(y, m - 1, d);
+    base.setDate(base.getDate() + (weekNum - 1) * 7 + colIdx);
+    return `${base.getDate()}/${base.getMonth() + 1}`;
   }
 
   const todayList = entries.filter(e => e.week_number === currentWeek && (e.day_of_week === DOW || e.day_of_week === null));
@@ -81,7 +81,7 @@ export default function Calendar({ goal, entries, onToggle, refresh }: Props) {
 }
 
 function WeekSection({ weekNum, currentWeek, currentDate, byDay, flexible, DOW, onToggle, onOpen }: {
-  weekNum: number; currentWeek: number; currentDate: (wn: number, dow: number) => string;
+  weekNum: number; currentWeek: number; currentDate: (wn: number, colIdx: number) => string;
   byDay: Record<number, PlanEntry[]>; flexible: PlanEntry[];
   DOW: number;
   onToggle: (e: PlanEntry) => void;
@@ -98,7 +98,7 @@ function WeekSection({ weekNum, currentWeek, currentDate, byDay, flexible, DOW, 
           const day = (i + 6) % 7;
           const dayEntries = byDay[day] ?? [];
           const isToday = day === DOW && weekNum === currentWeek;
-          const date = currentDate(weekNum, day);
+          const date = currentDate(weekNum, i);
           return (
             <div key={label} className="calendar-day" style={{
               background: isToday ? "color-mix(in srgb, var(--primary) 12%, var(--bg))" : "var(--bg)",
@@ -183,5 +183,3 @@ function ActivityCard({ e, onToggle, onOpen, compact, pill }: CardProps) {
     </div>
   );
 }
-
-

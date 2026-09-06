@@ -482,22 +482,22 @@ def test_fallback_analysis_flags_failure_and_plateau():
     assert "adherence" in joined.lower()
 
 
-def test_normalize_start_date_never_in_the_past_and_is_monday():
+def test_normalize_start_date_never_in_the_past_and_is_sunday():
     from datetime import date, timedelta
 
     from app.services.ai_service import normalize_start_date
 
     today = date.today()
-    monday = today - timedelta(days=today.weekday())
+    sunday = today - timedelta(days=(today.weekday() + 1) % 7)
 
-    # None → this week's Monday
-    assert normalize_start_date(None) == monday
-    # Past date (AI hallucinating last year) → this week's Monday
-    assert normalize_start_date(date(2020, 3, 5)) == monday
-    # Future date → snapped back to its own Monday
+    # None → this week's Sunday
+    assert normalize_start_date(None) == sunday
+    # Past date (AI hallucinating last year) → this week's Sunday
+    assert normalize_start_date(date(2020, 3, 5)) == sunday
+    # Future date → snapped back to its own Sunday (weekday() == 6 in python)
     future = today + timedelta(days=20)
     got = normalize_start_date(future)
-    assert got.weekday() == 0 and got <= future
+    assert got.weekday() == 6 and got <= future
 
 
 def test_plan_summary_and_max_week():
