@@ -123,7 +123,7 @@ export default function WorkoutLogger({ goal, entry, onClose }: Props) {
   }
 
   async function autosave(exId: string) {
-    if (!session) return;
+    if (!session || busy[exId] || done[exId]) return;
     const sets = draftToSets(exId);
     if (!sets.length) return;
     await api.logSets(goal.id, session.id, sets).catch(() => {});

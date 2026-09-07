@@ -84,6 +84,10 @@ CREATE TABLE IF NOT EXISTS workout_exercise_logs (
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS uq_session_source_exercise
+ON workout_exercise_logs (session_id, source_exercise_id)
+WHERE source_exercise_id IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS set_logs (
     id UUID PRIMARY KEY,
     session_id UUID NOT NULL REFERENCES workout_sessions(id) ON DELETE CASCADE,

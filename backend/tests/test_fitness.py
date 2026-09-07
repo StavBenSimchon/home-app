@@ -263,6 +263,35 @@ async def test_finish_rejects_foreign_exercise(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_finish_exercise_is_idempotent_even_if_duplicate_logs_exist(client: AsyncClient, session):
+    """Multiple autosaves or race conditions must never crash with MultipleResultsFound."""
+    import uuid as _uuid
+    from datetime import date
+    from app.models.session import WorkoutExerciseLog
+
+    goal_id, _, ex_id, session_id = await _mk_goal_with_session(client)
+    log1 = WorkoutExerciseLog(
+        session_id=_uuid.UUID(session_id), source_exercise_id=_uuid.UUID(ex_id),
+        exercise_name="Bench Press", performed_at=date.today(),
+    )
+    log2 = WorkoutExerciseLog(
+        session_id=_uuid.UUID(session_id), source_exercise_id=_uuid.UUID(ex_id),
+        exercise_name="Bench Press", performed_at=date.today(),
+    )
+    session.add(log1)
+    session.add(log2)
+    await session.commit()
+
+    resp = await client.post(
+        f"/goals/{goal_id}/sessions/{session_id}/exercises/{ex_id}/finish",
+        json={"sets": [
+            {"exercise_id": ex_id, "set_number": 1, "weight": 80, "reps": 10, "rir": 2},
+        ]},
+    )
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_finalize_preserves_logged_history_and_replaces_future_plan(client: AsyncClient, session):
     """Regression: finalizing must never cascade-delete WorkoutSession/SetLog rows."""
     import uuid as _uuid

@@ -262,14 +262,28 @@ async def _get_or_create_exercise_log(
     exercise: Exercise,
 ) -> WorkoutExerciseLog:
     result = await session.execute(
-        select(WorkoutExerciseLog).where(
+        select(WorkoutExerciseLog)
+        .options(selectinload(WorkoutExerciseLog.set_logs))
+        .where(
             WorkoutExerciseLog.session_id == ws.id,
             WorkoutExerciseLog.source_exercise_id == exercise.id,
         )
+        .order_by(WorkoutExerciseLog.completed_at.desc().nullslast(), WorkoutExerciseLog.created_at)
     )
-    log = result.scalar_one_or_none()
-    if log:
-        return log
+    logs = list(result.scalars())
+    if logs:
+        primary = logs[0]
+        if len(logs) > 1:
+            existing_sets = {sl.set_number for sl in primary.set_logs}
+            for extra in logs[1:]:
+                for sl in extra.set_logs:
+                    if sl.set_number not in existing_sets:
+                        sl.exercise_log_id = primary.id
+                        existing_sets.add(sl.set_number)
+                await session.delete(extra)
+            await session.flush()
+        return primary
+
     log = WorkoutExerciseLog(
         session_id=ws.id,
         source_exercise_id=exercise.id,
@@ -294,13 +308,15 @@ async def _upsert_set(
     item: SetLogWrite,
 ) -> SetLog:
     result = await db.execute(
-        select(SetLog).where(
+        select(SetLog)
+        .where(
             SetLog.exercise_log_id == exercise_log.id,
             SetLog.set_number == item.set_number,
         )
+        .order_by(SetLog.created_at)
     )
-    sl = result.scalar_one_or_none()
-    if sl is None:
+    sl_list = list(result.scalars())
+    if not sl_list:
         sl = SetLog(
             session_id=ws.id,
             exercise_log_id=exercise_log.id,
@@ -308,6 +324,11 @@ async def _upsert_set(
             set_number=item.set_number,
         )
         db.add(sl)
+    else:
+        sl = sl_list[0]
+        if len(sl_list) > 1:
+            for extra in sl_list[1:]:
+                await db.delete(extra)
     sl.weight = item.weight
     sl.reps = item.reps
     sl.rir = item.rir
