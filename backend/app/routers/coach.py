@@ -192,16 +192,12 @@ async def finalize(payload: CoachChatRequest, session: AsyncSession = Depends(ge
         summary = plan_summary(ai_output["plan"])
         from app.services.ai_service import update_goal_with_plan
         result = await update_goal_with_plan(ai_output, session, goal.id, raw_json=ai_output)
-        await _persist_message(
-            session, goal.id, "assistant",
-            f"✓ Plan updated — {summary['weeks']} weeks, {summary['activities']} activities, {summary['exercises']} exercises.",
-        )
         await session.commit()
         return {"type": "finalized", "summary": summary, **result}
     except HTTPException:
         raise
     except Exception as e:
-        print(f"coach finalize error: {traceback.format_exc()}", flush=True)
+        print(f"coach chat error: {traceback.format_exc()}", flush=True)
         raise HTTPException(status_code=502, detail=f"Coach error: {e}")
 
 

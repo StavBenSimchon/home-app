@@ -5,10 +5,10 @@ from httpx import AsyncClient
 
 
 async def _mk_goal_with_session(client: AsyncClient) -> tuple[str, str, str, str]:
-    """Create goal → plan entry → exercise → session. Returns ids."""
+    """Create goal ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ plan entry ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ exercise ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ session. Returns ids."""
     goal_id = (await client.post("/goals/", json={"title": "Fat loss"})).json()["id"]
     entry_id = (await client.post(f"/goals/{goal_id}/plans/", json={
-        "goal_id": goal_id, "week_number": 1, "day_of_week": 0, "activity": "Workout A — Upper",
+        "goal_id": goal_id, "week_number": 1, "day_of_week": 0, "activity": "Workout A ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Upper",
     })).json()["id"]
     ex_id = (await client.post(f"/goals/{goal_id}/plans/{entry_id}/exercises/", json={
         "plan_entry_id": entry_id, "name": "Bench Press", "sets": 3, "reps": 8, "reps_max": 10,
@@ -115,7 +115,7 @@ async def test_insights_generate_list_dismiss(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_insights_have_no_actions(client: AsyncClient):
-    """Insights are informational only — program changes go through coach finalize."""
+    """Insights are informational only ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â program changes go through coach finalize."""
     goal_id, _, _, _ = await _mk_goal_with_session(client)
     await client.post("/weight/", json={"weight_kg": 80})
     await client.post("/weight/", json={"weight_kg": 79})
@@ -335,7 +335,7 @@ async def test_finalize_preserves_logged_history_and_replaces_future_plan(client
     # Logged entry/exercise and the Workout tab feed survive unchanged.
     logged_entry = await client.get(f"/goals/{goal_id}/plans/{entry_id}")
     assert logged_entry.status_code == 200
-    assert logged_entry.json()["activity"] == "Workout A — Upper"
+    assert logged_entry.json()["activity"] == "Workout A ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Upper"
     logged_exercises = await client.get(f"/goals/{goal_id}/plans/{entry_id}/exercises/")
     assert any(e["id"] == ex_id and e["name"] == "Bench Press" for e in logged_exercises.json())
     history = await client.get(f"/goals/{goal_id}/sessions/log")
@@ -402,7 +402,7 @@ async def test_analyze_endpoint_returns_payload_and_dedupes(client: AsyncClient)
     assert payload["metrics"]["last_7_days"]["sets_logged"] == 1
     assert payload["metrics"]["last_14_days"]["days"] == 14
 
-    # same day → reuse, unless forced
+    # same day ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ reuse, unless forced
     again = await client.post(f"/goals/{goal_id}/insights/analyze")
     assert again.json()["id"] == body["id"]
     forced = await client.post(f"/goals/{goal_id}/insights/analyze?force=true")
@@ -422,7 +422,7 @@ async def test_progression_preview_and_apply_updates_next_week_only(client: Asyn
         ]},
     )
     week2 = (await client.post(f"/goals/{goal_id}/plans/", json={
-        "goal_id": goal_id, "week_number": 2, "day_of_week": 0, "activity": "Workout A — Upper",
+        "goal_id": goal_id, "week_number": 2, "day_of_week": 0, "activity": "Workout A ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Upper",
     })).json()
     week2_ex = (await client.post(f"/goals/{goal_id}/plans/{week2['id']}/exercises/", json={
         "plan_entry_id": week2["id"], "name": "Bench Press", "sets": 3,
@@ -519,11 +519,11 @@ def test_normalize_start_date_never_in_the_past_and_is_sunday():
     today = date.today()
     sunday = today - timedelta(days=(today.weekday() + 1) % 7)
 
-    # None → this week's Sunday
+    # None ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ this week's Sunday
     assert normalize_start_date(None) == sunday
-    # Past date (AI hallucinating last year) → this week's Sunday
+    # Past date (AI hallucinating last year) ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ this week's Sunday
     assert normalize_start_date(date(2020, 3, 5)) == sunday
-    # Future date → snapped back to its own Sunday (weekday() == 6 in python)
+    # Future date ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ snapped back to its own Sunday (weekday() == 6 in python)
     future = today + timedelta(days=20)
     got = normalize_start_date(future)
     assert got.weekday() == 6 and got <= future
@@ -598,7 +598,7 @@ def test_parse_plan_items_splits_combined_activities():
     ])
     assert len(items_notes) == 2
     assert items_notes[0]["activity"] == "Pull"
-    assert items_notes[1]["activity"] == "Walk — 60 min"
+    assert items_notes[1]["activity"] == "Walk - 60 min"
     assert items_notes[1]["duration_minutes"] == 60
 
 
