@@ -1,4 +1,4 @@
-const CACHE = "home-app-v3";
+const CACHE = "home-app-v4";
 const ASSETS = [
   "/",
   "/index.html",
@@ -27,9 +27,12 @@ self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
+  // Dynamic API calls must always bypass the service worker directly to the network.
   if (url.pathname.startsWith("/api/")) {
-    event.respondWith(networkFirst(request));
-  } else if (request.mode === "navigate") {
+    return;
+  }
+
+  if (request.mode === "navigate") {
     event.respondWith(networkFirst(request));
   } else {
     event.respondWith(cacheFirst(request));

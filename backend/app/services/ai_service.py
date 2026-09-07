@@ -41,7 +41,7 @@ Return ONLY valid JSON — no markdown, no code fences, no extra text.
 
 Cover the most important of: primary goal specifics, current weight, height, body-fat %, muscle mass, training experience, sessions per week, available days, available equipment, preferred session duration, exercise preferences, exercises they dislike or cannot do, cardio preferences, lifestyle/activity level, injuries/limitations."""
 
-PLAN_PROMPT = f"""You are an AI fitness coach. Given a user's goal and their answers, create a structured multi-week plan.
+PLAN_PROMPT = f"""You are an AI fitness coach. Given a user's goal and their answers, create a structured training plan.
 
 Return ONLY valid JSON — no markdown, no code fences, no extra text.
 
@@ -55,10 +55,10 @@ Rules:
   1) {{"week_number": 1, "day_of_week": 0, "activity": "Push & Abs", "duration_minutes": 60, "exercises": [...]}}
   2) {{"week_number": 1, "day_of_week": 0, "activity": "Daily Walk", "duration_minutes": 60, "notes": "60 min brisk walk", "exercises": []}}
   Never combine multiple activities into a single entry title or hide an activity in the notes.
-- The plan MUST span at least 12 weeks (or the user's stated duration). For EACH week, list ALL of its daily activities.
+- Emit the weekly routine in the 'plan' array (e.g. Week 1 with all daily activities, or distinct week blocks 1..4).
+- Set 'duration_weeks': 12 in the goal object (or user's stated duration).
 - For every STRENGTH workout you MUST include "exercises": at least 4-6 specific exercises with sets, rep range (reps..reps_max), weight (when known), rir_target.
 - For cardio-like items (walk/HIIT/etc.) put targets in notes (e.g. "8,000 steps") and skip exercises (exercises: []).
-- Progress the plan week-by-week (load increases, rep increases, etc.).
 - today is {date.today().isoformat()}"""
 
 REFINE_PROMPT = f"""You are an AI fitness coach refining an existing plan. The current plan JSON is provided as context.
@@ -73,7 +73,8 @@ Rules:
 - CRITICAL: If a day has multiple activities (e.g. lifting AND daily walking, or HIIT AND walking), emit EACH activity as its own separate entry in the 'plan' array with the same week_number and day_of_week.
 - Every STRENGTH workout MUST include the "exercises" array (name, sets, reps..reps_max, weight, rir_target).
 - For walking, cardio, or recovery: emit separate entries with duration_minutes and exercises: [].
-- Include ALL weeks of the plan (weeks 1..12) and ALL activities, modified based on the conversation.
+- Emit the full weekly routine in the 'plan' array (e.g. Week 1 with all daily activities, or distinct week blocks 1..4).
+- Set 'duration_weeks': 12 in the goal object (or user's stated duration).
 - Treat completed workouts, logged exercises, set logs, and prior calendar entries as immutable history.
 - Apply requested changes to unstarted current/future workouts only.
 """
@@ -364,7 +365,8 @@ async def create_goal_with_plan(ai_output: dict, session, raw_json: dict | None 
     from app.models.exercise import Exercise
 
     goal_data = ai_output["goal"]
-    plan_entries = _parse_plan_items(ai_output.get("plan", []))
+    target_weeks = _determine_target_weeks(goal_data)
+    plan_entries = _parse_plan_items(_expand_plan_weeks(ai_output.get("plan", []), target_weeks=target_weeks))
 
     start = normalize_start_date(to_date(goal_data.get("start_date")))
 
@@ -520,6 +522,49 @@ def max_week(plan_items: list) -> int:
     return max((int(i.get("week_number") or 1) for i in plan_items if isinstance(i, dict)), default=0)
 
 
+def _determine_target_weeks(goal_data: dict, existing_goal=None) -> int:
+    if goal_data.get("duration_weeks"):
+        try:
+            return max(1, min(52, int(goal_data["duration_weeks"])))
+        except (ValueError, TypeError):
+            pass
+    start = to_date(goal_data.get("start_date")) or (existing_goal.start_date if existing_goal else None)
+    target = to_date(goal_data.get("target_date")) or (existing_goal.target_date if existing_goal else None)
+    if start and target and target > start:
+        diff = (target - start).days // 7
+        if diff >= 1:
+            return max(1, min(52, diff))
+    return 12
+
+
+def _expand_plan_weeks(plan_items: list, target_weeks: int = 12) -> list:
+    """If the AI outputs a 1-week or multi-week routine, automatically replicate it
+    across the full program duration (target_weeks) with cycles/deloads intact."""
+    import copy
+
+    if not plan_items:
+        return []
+    current_max = max_week(plan_items)
+    if current_max >= target_weeks or current_max == 0:
+        return plan_items
+
+    weeks_present = sorted({int(i.get("week_number") or 1) for i in plan_items if isinstance(i, dict)})
+    if not weeks_present:
+        return plan_items
+
+    expanded = list(plan_items)
+    for w in range(current_max + 1, target_weeks + 1):
+        template_w = weeks_present[(w - 1) % len(weeks_present)]
+        for item in plan_items:
+            if not isinstance(item, dict):
+                continue
+            if int(item.get("week_number") or 1) == template_w:
+                new_item = copy.deepcopy(item)
+                new_item["week_number"] = w
+                expanded.append(new_item)
+    return expanded
+
+
 def plan_summary(plan_items: list) -> dict:
     weeks = {int(i.get("week_number") or 1) for i in plan_items if isinstance(i, dict)}
     exercises = sum(len(i.get("exercises") or []) for i in plan_items if isinstance(i, dict))
@@ -529,42 +574,24 @@ def plan_summary(plan_items: list) -> dict:
 async def coach_finalize(user_message: str, context: dict, history: list[dict]) -> dict:
     plan_json = json.dumps({"goal": context.get("goal", {}), "plan": context.get("plan", [])}, indent=2)
 
-    def build(extra: str | None = None) -> list[dict]:
-        messages = [{"role": "system", "content": REFINE_PROMPT}]
-        messages.append({"role": "user", "content": f"Current plan:\n{plan_json}"})
-        for h in history:
-            messages.append({"role": h["role"], "content": h["text"]})
-        instructions = (
-            f"{user_message}\n\n"
-            "FINALIZE NOW. Return ONLY the JSON object described in the schema — no prose, no code fences.\n"
-            f"It MUST contain at least {MIN_PLAN_WEEKS} distinct week_number values (target 12 weeks).\n"
-            "If a day contains multiple activities (e.g. lifting workout AND daily walking, or HIIT AND walking), "
-            "emit EACH activity as its own separate object in the 'plan' array with the corresponding week_number and day_of_week.\n"
-            "Never hide activities in notes or combine them into a single string.\n"
-            "Every strength workout MUST include an 'exercises' array with sets, reps, rir_target.\n"
-            "Do not rewrite prior/completed workouts or logged exercise history; changes are for unstarted current/future workouts."
-        )
-        if extra:
-            instructions += f"\n\n{extra}"
-        messages.append({"role": "user", "content": instructions})
-        return messages
+    messages = [{"role": "system", "content": REFINE_PROMPT}]
+    messages.append({"role": "user", "content": f"Current plan:\n{plan_json}"})
+    for h in history:
+        messages.append({"role": h["role"], "content": h["text"]})
+    instructions = (
+        f"{user_message}\n\n"
+        "FINALIZE NOW. Return ONLY the JSON object described in the schema — no prose, no code fences.\n"
+        "Emit the full weekly routine in the 'plan' array (e.g. Week 1 with all daily activities, or distinct week blocks 1..4).\n"
+        "Set 'duration_weeks': 12 in the goal object (or user's stated duration).\n"
+        "If a day contains multiple activities (e.g. lifting workout AND daily walking, or HIIT AND walking), "
+        "emit EACH activity as its own separate object in the 'plan' array with the corresponding week_number and day_of_week.\n"
+        "Never hide activities in notes or combine them into a single string.\n"
+        "Every strength workout MUST include an 'exercises' array with sets, reps, rir_target.\n"
+        "Do not rewrite prior/completed workouts or logged exercise history; changes are for unstarted current/future workouts."
+    )
+    messages.append({"role": "user", "content": instructions})
 
-    ai_output = _parse(await _call_ai(build()))
-    plan_items = ai_output.get("plan") or []
-
-    # One retry when the model returned a single-week (or empty) plan.
-    if max_week(plan_items) < MIN_PLAN_WEEKS:
-        retry_note = (
-            f"Your previous answer only covered {max_week(plan_items)} week(s). "
-            "Return the FULL program again, repeating each week explicitly with its own week_number "
-            "(1..12) and all activities. Do not summarize or say 'repeat week 1'."
-        )
-        try:
-            retried = _parse(await _call_ai(build(retry_note)))
-            if max_week(retried.get("plan") or []) > max_week(plan_items):
-                ai_output = retried
-        except Exception:
-            pass
+    ai_output = _parse(await _call_ai(messages))
     return ai_output
 
 
@@ -581,7 +608,8 @@ async def update_goal_with_plan(ai_output: dict, session, goal_id, raw_json: dic
         raise ValueError("Goal not found")
 
     goal_data = ai_output["goal"]
-    plan_entries = _parse_plan_items(ai_output.get("plan", []))
+    target_weeks = _determine_target_weeks(goal_data, goal)
+    plan_entries = _parse_plan_items(_expand_plan_weeks(ai_output.get("plan", []), target_weeks=target_weeks))
 
     # Finalize is a future-program operation, never a history rewrite. The old
     # implementation deleted every PlanEntry, which cascaded into exercises,

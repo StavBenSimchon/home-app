@@ -541,6 +541,22 @@ def test_plan_summary_and_max_week():
     assert plan_summary(plan) == {"weeks": 2, "activities": 3, "exercises": 3}
 
 
+def test_expand_plan_weeks_replicates_to_target_duration():
+    from app.services.ai_service import _expand_plan_weeks, max_week
+
+    sample = [
+        {"week_number": 1, "day_of_week": 6, "activity": "Push", "exercises": [{"name": "Bench"}]},
+        {"week_number": 1, "day_of_week": 0, "activity": "Pull", "exercises": [{"name": "Row"}]},
+    ]
+    expanded = _expand_plan_weeks(sample, target_weeks=12)
+    assert max_week(expanded) == 12
+    assert len(expanded) == 24
+    week12 = [x for x in expanded if x["week_number"] == 12]
+    assert len(week12) == 2
+    assert week12[0]["activity"] == "Push"
+    assert week12[0]["exercises"][0]["name"] == "Bench"
+
+
 def test_parse_plan_items_splits_combined_activities():
     from app.services.ai_service import _parse_plan_items
 

@@ -79,7 +79,18 @@ async def _load_context(session: AsyncSession, goal: Goal) -> dict:
         .where(PlanEntry.goal_id == goal.id)
         .order_by(PlanEntry.week_number, PlanEntry.day_of_week)
     )
-    plan = _serialize_entries(entries_result.scalars().all())
+    all_entries = list(entries_result.scalars())
+    weeks_present = sorted({e.week_number for e in all_entries})
+    if weeks_present:
+        context_weeks = {weeks_present[0]}
+        for w in weeks_present[1:]:
+            if any("deload" in (e.activity or "").lower() or "peak" in (e.activity or "").lower() for e in all_entries if e.week_number == w):
+                context_weeks.add(w)
+                break
+        compact_entries = [e for e in all_entries if e.week_number in context_weeks]
+    else:
+        compact_entries = []
+    plan = _serialize_entries(compact_entries)
 
     sessions_result = await session.execute(
         select(WorkoutSession)
@@ -126,6 +137,7 @@ async def _load_context(session: AsyncSession, goal: Goal) -> dict:
             "target_value": goal.target_value, "unit": goal.unit,
             "start_date": str(goal.start_date) if goal.start_date else None,
             "target_date": str(goal.target_date) if goal.target_date else None,
+            "duration_weeks": len(weeks_present) if weeks_present else 12,
         },
         "plan": plan,
         "recent_sessions": recent,

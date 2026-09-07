@@ -1,10 +1,18 @@
 const BASE = "/api";
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${url}`, {
-    headers: { "Content-Type": "application/json", ...options?.headers },
-    ...options,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${url}`, {
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      ...options,
+    });
+  } catch (err: unknown) {
+    if (err instanceof TypeError && String(err.message).toLowerCase().includes("fetch")) {
+      throw new Error("Network request timed out or was interrupted. Please retry.");
+    }
+    throw err;
+  }
   if (res.status === 204) return undefined as T;
   const text = await res.text();
   let body: Record<string, unknown>;
