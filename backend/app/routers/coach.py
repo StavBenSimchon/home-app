@@ -72,7 +72,7 @@ def _serialize_entries(entries: list[PlanEntry]) -> list[dict]:
     ]
 
 
-async def _load_context(session: AsyncSession, goal: Goal) -> dict:
+async def _load_context(session: AsyncSession, goal: Goal, full_plan: bool = False) -> dict:
     entries_result = await session.execute(
         select(PlanEntry)
         .options(selectinload(PlanEntry.exercises))
@@ -81,15 +81,18 @@ async def _load_context(session: AsyncSession, goal: Goal) -> dict:
     )
     all_entries = list(entries_result.scalars())
     weeks_present = sorted({e.week_number for e in all_entries})
-    if weeks_present:
-        context_weeks = {weeks_present[0]}
-        for w in weeks_present[1:]:
-            if any("deload" in (e.activity or "").lower() or "peak" in (e.activity or "").lower() for e in all_entries if e.week_number == w):
-                context_weeks.add(w)
-                break
-        compact_entries = [e for e in all_entries if e.week_number in context_weeks]
+    if full_plan:
+        compact_entries = all_entries
     else:
-        compact_entries = []
+        if weeks_present:
+            context_weeks = {weeks_present[0]}
+            for w in weeks_present[1:]:
+                if any("deload" in (e.activity or "").lower() or "peak" in (e.activity or "").lower() for e in all_entries if e.week_number == w):
+                    context_weeks.add(w)
+                    break
+            compact_entries = [e for e in all_entries if e.week_number in context_weeks]
+        else:
+            compact_entries = []
     plan = _serialize_entries(compact_entries)
 
     sessions_result = await session.execute(
@@ -178,7 +181,7 @@ async def chat(payload: CoachChatRequest, session: AsyncSession = Depends(get_se
 async def finalize(payload: CoachChatRequest, session: AsyncSession = Depends(get_session)):
     try:
         goal = await _resolve_goal(session, payload.goal_id)
-        context = await _load_context(session, goal)
+        context = await _load_context(session, goal, full_plan=True)
         history = [{"role": h.get("role", "user"), "text": h.get("text", "")} for h in payload.history[-20:]]
         try:
             ai_output = await coach_finalize(payload.message, context, history)
@@ -199,6 +202,21 @@ async def finalize(payload: CoachChatRequest, session: AsyncSession = Depends(ge
     except Exception as e:
         print(f"coach chat error: {traceback.format_exc()}", flush=True)
         raise HTTPException(status_code=502, detail=f"Coach error: {e}")
+
+
+@router.delete("/history")
+async def clear_history(goal_id: str, session: AsyncSession = Depends(get_session)):
+    try:
+        gid = uuid.UUID(goal_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid goal_id")
+    result = await session.execute(
+        select(CoachMessage).where(CoachMessage.goal_id == gid)
+    )
+    for msg in result.scalars():
+        await session.delete(msg)
+    await session.commit()
+    return {"ok": True}
 
 
 @router.get("/history")

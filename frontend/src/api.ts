@@ -359,6 +359,8 @@ export const api = {
     }),
   coachHistory: (goalId: string) =>
     request<{ role: string; text: string; created_at: string }[]>(`/coach/history?goal_id=${goalId}`),
+  coachClearHistory: (goalId: string) =>
+    request<{ ok: boolean }>(`/coach/history?goal_id=${goalId}`, { method: "DELETE" }),
 
   // Insights / Progress
   analyzeInsights: (goalId: string, force = false) =>

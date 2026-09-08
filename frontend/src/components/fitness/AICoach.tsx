@@ -153,8 +153,9 @@ function CoachChat({ goal, onPlanUpdated }: { goal: Goal; onPlanUpdated: () => v
       const text = sum
         ? `✓ Plan updated — ${sum.weeks} week${sum.weeks === 1 ? "" : "s"}, ${sum.activities} activities, ${sum.exercises} exercises.`
         : "✓ Plan updated.";
-      setMessages(prev => [...prev, { role: "assistant", text }]);
       setStatus({ ok: true, text });
+      setMessages([]);
+      api.coachClearHistory(goal.id).catch(() => {});
       onPlanUpdated();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

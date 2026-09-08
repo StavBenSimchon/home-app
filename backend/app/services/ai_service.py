@@ -609,7 +609,7 @@ async def update_goal_with_plan(ai_output: dict, session, goal_id, raw_json: dic
 
     goal_data = ai_output["goal"]
     target_weeks = _determine_target_weeks(goal_data, goal)
-    plan_entries = _parse_plan_items(_expand_plan_weeks(ai_output.get("plan", []), target_weeks=target_weeks))
+    plan_entries = _parse_plan_items(ai_output.get("plan", []))
 
     # Finalize is a future-program operation, never a history rewrite. The old
     # implementation deleted every PlanEntry, which cascaded into exercises,
