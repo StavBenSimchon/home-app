@@ -63,7 +63,7 @@ Rules:
 
 REFINE_PROMPT = f"""You are an AI fitness coach refining an existing plan. The current plan JSON is provided as context.
 
-If NOT finalizing: respond conversationally ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â answer questions, suggest tweaks, ask clarifying questions.
+If NOT finalizing: respond conversationally — answer questions, suggest tweaks, ask clarifying questions.
 
 If finalizing: return ONLY valid JSON with the FULL updated plan using this schema:
 {PLAN_SCHEMA}
@@ -73,10 +73,11 @@ Rules:
 - CRITICAL: If a day has multiple activities (e.g. lifting AND daily walking, or HIIT AND walking), emit EACH activity as its own separate entry in the 'plan' array with the same week_number and day_of_week.
 - Every STRENGTH workout MUST include the "exercises" array (name, sets, reps..reps_max, weight, rir_target).
 - For walking, cardio, or recovery: emit separate entries with duration_minutes and exercises: [].
-- Emit the full weekly routine in the 'plan' array (e.g. Week 1 with all daily activities, or distinct week blocks 1..4).
+- CRITICAL: You MUST emit the COMPLETE plan for ALL weeks from week 1 through duration_weeks. Do NOT skip any weeks. Every week must have the same weekly structure (all 7 days with their activities). The plan array must contain entries for EVERY week.
 - Set 'duration_weeks': 12 in the goal object (or user's stated duration).
 - Treat completed workouts, logged exercises, set logs, and prior calendar entries as immutable history.
 - Apply requested changes to unstarted current/future workouts only.
+- Do NOT include "Post-Workout Stretch" or similar stretch entries unless explicitly requested.
 """
 
 COACH_PROMPT = """You are the user's personal AI fitness coach, deeply connected to their data.
@@ -565,6 +566,36 @@ def _expand_plan_weeks(plan_items: list, target_weeks: int = 12) -> list:
     return expanded
 
 
+def _fill_missing_weeks(plan_items: list, target_weeks: int = 12) -> list:
+    """If the AI output skips weeks (e.g. returns 1-2,5-12 but not 3-4),
+    fill gaps by copying the weekly template from the nearest existing week."""
+    import copy
+
+    if not plan_items:
+        return plan_items
+
+    weeks_present = sorted({int(i.get("week_number") or 1) for i in plan_items if isinstance(i, dict)})
+    if not weeks_present:
+        return plan_items
+
+    all_weeks = set(range(1, target_weeks + 1))
+    missing_weeks = all_weeks - set(weeks_present)
+    if not missing_weeks:
+        return plan_items
+
+    result = list(plan_items)
+    for w in sorted(missing_weeks):
+        template_w = min(weeks_present, key=lambda x: abs(x - w))
+        for item in plan_items:
+            if not isinstance(item, dict):
+                continue
+            if int(item.get("week_number") or 1) == template_w:
+                new_item = copy.deepcopy(item)
+                new_item["week_number"] = w
+                result.append(new_item)
+    return result
+
+
 def plan_summary(plan_items: list) -> dict:
     weeks = {int(i.get("week_number") or 1) for i in plan_items if isinstance(i, dict)}
     exercises = sum(len(i.get("exercises") or []) for i in plan_items if isinstance(i, dict))
@@ -580,14 +611,16 @@ async def coach_finalize(user_message: str, context: dict, history: list[dict]) 
         messages.append({"role": h["role"], "content": h["text"]})
     instructions = (
         f"{user_message}\n\n"
-        "FINALIZE NOW. Return ONLY the JSON object described in the schema ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â no prose, no code fences.\n"
-        "Emit the full weekly routine in the 'plan' array (e.g. Week 1 with all daily activities, or distinct week blocks 1..4).\n"
+        "FINALIZE NOW. Return ONLY the JSON object described in the schema — no prose, no code fences.\n"
+        "CRITICAL: You MUST include ALL weeks from week 1 through duration_weeks (12). Do NOT skip any weeks. "
+        "Every week must have the same weekly structure with all 7 days and their activities.\n"
         "Set 'duration_weeks': 12 in the goal object (or user's stated duration).\n"
         "If a day contains multiple activities (e.g. lifting workout AND daily walking, or HIIT AND walking), "
         "emit EACH activity as its own separate object in the 'plan' array with the corresponding week_number and day_of_week.\n"
         "Never hide activities in notes or combine them into a single string.\n"
         "Every strength workout MUST include an 'exercises' array with sets, reps, rir_target.\n"
-        "Do not rewrite prior/completed workouts or logged exercise history; changes are for unstarted current/future workouts."
+        "Do not rewrite prior/completed workouts or logged exercise history; changes are for unstarted current/future workouts.\n"
+        "Do NOT include 'Post-Workout Stretch' or similar stretch entries unless explicitly requested."
     )
     messages.append({"role": "user", "content": instructions})
 
@@ -609,7 +642,7 @@ async def update_goal_with_plan(ai_output: dict, session, goal_id, raw_json: dic
 
     goal_data = ai_output["goal"]
     target_weeks = _determine_target_weeks(goal_data, goal)
-    plan_entries = _parse_plan_items(ai_output.get("plan", []))
+    plan_entries = _parse_plan_items(_fill_missing_weeks(ai_output.get("plan", []), target_weeks=target_weeks))
 
     # Finalize is a future-program operation, never a history rewrite. The old
     # implementation deleted every PlanEntry, which cascaded into exercises,
