@@ -72,6 +72,23 @@ def _serialize_entries(entries: list[PlanEntry]) -> list[dict]:
     ]
 
 
+def _serialize_entries_compact(entries: list[PlanEntry]) -> list[dict]:
+    return [
+        {
+            "w": e.week_number,
+            "d": e.day_of_week,
+            "a": e.activity,
+            "m": e.duration_minutes,
+            "c": e.completed,
+            "ex": [
+                {"n": ex.name, "s": ex.sets, "r": str(ex.reps) + "-" + str(ex.reps_max), "rir": ex.rir_target}
+                for ex in sorted(e.exercises, key=lambda x: x.order_index)
+            ] if e.exercises else [],
+        }
+        for e in entries
+    ]
+
+
 async def _load_context(session: AsyncSession, goal: Goal, full_plan: bool = False) -> dict:
     entries_result = await session.execute(
         select(PlanEntry)
@@ -93,7 +110,7 @@ async def _load_context(session: AsyncSession, goal: Goal, full_plan: bool = Fal
             compact_entries = [e for e in all_entries if e.week_number in context_weeks]
         else:
             compact_entries = []
-    plan = _serialize_entries(compact_entries)
+    plan = _serialize_entries_compact(compact_entries) if full_plan else _serialize_entries(compact_entries)
 
     sessions_result = await session.execute(
         select(WorkoutSession)
