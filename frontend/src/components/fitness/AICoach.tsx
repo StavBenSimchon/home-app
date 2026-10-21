@@ -60,11 +60,11 @@ function Onboarding({ onComplete }: { onComplete: () => void }) {
     <div>
       <div style={{ ...s.card, marginBottom: "1rem" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", marginBottom: "0.5rem" }}>
-          <span style={{ fontSize: "1.1rem" }}>🧠</span>
+          <span style={{ fontSize: "1.1rem" }}>ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â </span>
           <span style={{ fontWeight: 600 }}>AI Coach</span>
         </div>
         <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", lineHeight: 1.5 }}>
-          Describe your goal — I'll build a personalized plan, put it on your calendar, and keep improving it as you progress.
+          Describe your goal ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â I'll build a personalized plan, put it on your calendar, and keep improving it as you progress.
         </p>
         <textarea value={input} onChange={e => setInput(e.target.value)} rows={2}
           placeholder="e.g. Lose body fat from 25% to 15% while building muscle, training 4x/week"
@@ -72,7 +72,7 @@ function Onboarding({ onComplete }: { onComplete: () => void }) {
         {phase === "describe" || phase === "questions" ? (
           <button onClick={handleStart} disabled={!input.trim()}
             style={{ ...s.btnPrimary, marginTop: "0.6rem", opacity: !input.trim() ? 0.6 : 1 }}>
-            {phase === "describe" ? "Let's go →" : "Restart questions"}
+            {phase === "describe" ? "Let's go ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢" : "Restart questions"}
           </button>
         ) : null}
         {error && <p style={{ color: "#ef4444", fontSize: "0.8rem", marginTop: "0.4rem" }}>{error}</p>}
@@ -90,7 +90,7 @@ function Onboarding({ onComplete }: { onComplete: () => void }) {
             </p>
           ))}
           <div style={{ display: "flex", gap: "0.4rem", marginTop: "0.5rem" }}>
-            <input value={answer} onChange={e => setAnswer(e.target.value)} placeholder="Your answer…"
+            <input value={answer} onChange={e => setAnswer(e.target.value)} placeholder="Your answerÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦"
               style={{ ...s.input, marginTop: 0 }}
               onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleAnswer(); } }} />
             <button onClick={handleAnswer} disabled={!answer.trim()} style={{ ...s.btnPrimary, opacity: !answer.trim() ? 0.6 : 1 }}>Next</button>
@@ -100,13 +100,13 @@ function Onboarding({ onComplete }: { onComplete: () => void }) {
 
       {phase === "generating" && (
         <div style={{ ...s.card, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "2.5rem" }}>
-          {SPINNER} <span style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>Building your plan…</span>
+          {SPINNER} <span style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>Building your planÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦</span>
         </div>
       )}
 
       {phase === "done" && (
         <div style={{ ...s.card, textAlign: "center", color: "#22c55e", fontWeight: 600 }}>
-          Plan created — check your Calendar! ✓
+          Plan created ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â check your Calendar! ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“
         </div>
       )}
     </div>
@@ -150,9 +150,9 @@ function CoachChat({ goal, onPlanUpdated }: { goal: Goal; onPlanUpdated: () => v
     try {
       const res = await api.coachFinalize(goal.id, "Apply everything we discussed.", history as { role: string; text: string }[]);
       const sum = res.summary;
-      const text = sum
-        ? `✓ Plan updated — ${sum.weeks} week${sum.weeks === 1 ? "" : "s"}, ${sum.activities} activities, ${sum.exercises} exercises.`
-        : "✓ Plan updated.";
+      const text = "Calendar updated.";
+
+
       setStatus({ ok: true, text });
       setMessages([]);
       api.coachClearHistory(goal.id).catch(() => {});
@@ -172,14 +172,14 @@ function CoachChat({ goal, onPlanUpdated }: { goal: Goal; onPlanUpdated: () => v
     <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 190px)" }}>
       <div style={{ ...s.card, flex: 1, display: "flex", flexDirection: "column", minHeight: 0, marginBottom: "0.6rem" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", marginBottom: "0.5rem" }}>
-          <span style={{ fontSize: "1.1rem" }}>🧠</span>
+          <span style={{ fontSize: "1.1rem" }}>ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â </span>
           <span style={{ fontSize: "0.88rem", fontWeight: 600 }}>AI Coach</span>
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: "0.4rem", marginBottom: "0.6rem" }}>
           {messages.length === 0 && (
             <div style={{ background: "var(--bg)", borderRadius: 8, padding: "0.75rem", fontSize: "0.85rem", color: "var(--text-muted)", lineHeight: 1.6 }}>
-              I'm your coach — I can see your workouts, measurements and schedule. Tell me what to change, then press
+              I'm your coach ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â I can see your workouts, measurements and schedule. Tell me what to change, then press
               <strong style={{ color: "var(--text)" }}> Finalize plan </strong> and I'll rewrite your calendar.
               <div style={{ display: "flex", flexWrap: "wrap", gap: "0.3rem", marginTop: "0.5rem" }}>
                 {["Make workouts shorter", "Replace bench press", "I can only train 3x/week", "Add another walk", "No cable machine anymore"].map(t => (
@@ -202,13 +202,13 @@ function CoachChat({ goal, onPlanUpdated }: { goal: Goal; onPlanUpdated: () => v
           ))}
           {(pending || finalizing) && (
             <div style={{ alignSelf: "flex-start", background: "var(--bg)", borderRadius: "12px 12px 12px 4px", padding: "0.4rem 0.7rem", display: "flex", alignItems: "center", gap: 6, fontSize: "0.8rem", color: "var(--text-muted)" }}>
-              {SPINNER} {finalizing ? "Rebuilding your plan…" : "Thinking…"}
+              {SPINNER} {finalizing ? "Rebuilding your planÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦" : "ThinkingÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦"}
             </div>
           )}
         </div>
 
         <div style={{ display: "flex", gap: "0.4rem" }}>
-          <input value={input} onChange={e => setInput(e.target.value)} placeholder="Tell your coach what to change…"
+          <input value={input} onChange={e => setInput(e.target.value)} placeholder="Tell your coach what to changeÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦"
             style={{ ...s.input, marginTop: 0 }}
             onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleSend(input); } }} />
           <button onClick={() => handleSend(input)} disabled={!input.trim() || pending}
@@ -222,7 +222,7 @@ function CoachChat({ goal, onPlanUpdated }: { goal: Goal; onPlanUpdated: () => v
           border: `1px solid ${status.ok ? "#22c55e" : "#ef4444"}`,
           borderRadius: 8, padding: "0.5rem 0.75rem", fontSize: "0.8rem", marginBottom: "0.5rem", lineHeight: 1.5,
         }}>
-          {status.ok ? status.text : `⚠️ ${status.text}`}
+          {status.ok ? status.text : `ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ${status.text}`}
         </div>
       )}
 
@@ -232,7 +232,7 @@ function CoachChat({ goal, onPlanUpdated }: { goal: Goal; onPlanUpdated: () => v
           display: "flex", alignItems: "center", justifyContent: "center", gap: "0.4rem",
           opacity: finalizing || pending ? 0.65 : 1,
         }}>
-        {finalizing ? <>{SPINNER} Finalizing…</> : "Finalize plan → update calendar"}
+        {finalizing ? <>{SPINNER} FinalizingÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦</> : "Finalize plan ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ update calendar"}
       </button>
     </div>
   );
