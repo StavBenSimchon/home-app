@@ -20,6 +20,7 @@ GOAL_SCHEMA = """{
 
 PLAN_SCHEMA = f"""{{
   "goal": {GOAL_SCHEMA},
+  "replace_mode": "future_only",
   "plan": [
     {{
       "week_number": 1,
@@ -70,13 +71,14 @@ If finalizing: return ONLY valid JSON with the FULL updated plan using this sche
 
 Rules:
 - day_of_week: 0=Mon..6=Sun. Null + frequency_hint for flexible days.
+- replace_mode: "future_only" (default) or "full". Use "full" ONLY when the user explicitly wants to "start fresh", "start over", "replace everything", "new plan from scratch", or "start from week 1". Use "future_only" for any adjustment, tweak, swap, add/remove exercise, change schedule, etc.
 - CRITICAL: If a day has multiple activities (e.g. lifting AND daily walking, or HIIT AND walking), emit EACH activity as its own separate entry in the 'plan' array with the same week_number and day_of_week.
 - Every STRENGTH workout MUST include the "exercises" array (name, sets, reps..reps_max, weight, rir_target).
 - For walking, cardio, or recovery: emit separate entries with duration_minutes and exercises: [].
 - CRITICAL: You MUST emit the COMPLETE plan for ALL weeks from week 1 through duration_weeks. Do NOT skip any weeks. Every week must have the same weekly structure (all 7 days with their activities). The plan array must contain entries for EVERY week.
 - Set 'duration_weeks': 12 in the goal object (or user's stated duration).
-- Treat completed workouts, logged exercises, set logs, and prior calendar entries as immutable history.
-- If the user explicitly wants to "start fresh" or "start from week 1", allow changing ALL unstarted entries (including past weeks) and set start_date to the new program start. Preserve only entries with logged sessions.
+- replace_mode "future_only": past calendar entries are preserved. Only include future changes.
+- replace_mode "full": ALL unstarted entries can change (including past weeks). Set start_date to the new program start. Preserve only entries with logged sessions.
 - Do NOT include "Post-Workout Stretch" or similar stretch entries unless explicitly requested.
 """
 
@@ -611,15 +613,16 @@ async def coach_finalize(user_message: str, context: dict, history: list[dict]) 
         messages.append({"role": h["role"], "content": h["text"]})
     instructions = (
         f"{user_message}\n\n"
-        "FINALIZE NOW. Return ONLY the JSON object described in the schema ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â no prose, no code fences.\n"
+        "FINALIZE NOW. Return ONLY the JSON object described in the schema — no prose, no code fences.\n"
         "CRITICAL: You MUST include ALL weeks from week 1 through duration_weeks (12). Do NOT skip any weeks. "
         "Every week must have the same weekly structure with all 7 days and their activities.\n"
         "Set 'duration_weeks': 12 in the goal object (or user's stated duration).\n"
+        "Set 'replace_mode' to 'full' ONLY if the user explicitly wants to start fresh, start over, replace everything, "
+        "or start from week 1. Otherwise set 'replace_mode' to 'future_only' — past calendar entries will be preserved.\n"
         "If a day contains multiple activities (e.g. lifting workout AND daily walking, or HIIT AND walking), "
         "emit EACH activity as its own separate object in the 'plan' array with the corresponding week_number and day_of_week.\n"
         "Never hide activities in notes or combine them into a single string.\n"
         "Every strength workout MUST include an 'exercises' array with sets, reps, rir_target.\n"
-        "Do not rewrite prior/completed workouts or logged exercise history; changes are for unstarted current/future workouts.\n"
         "Do NOT include 'Post-Workout Stretch' or similar stretch entries unless explicitly requested."
     )
     messages.append({"role": "user", "content": instructions})
@@ -673,13 +676,23 @@ async def update_goal_with_plan(ai_output: dict, session, goal_id, raw_json: dic
 
     preserved_entries: list[PlanEntry] = []
     replaceable_entries: list[PlanEntry] = []
+    replace_mode = str(ai_output.get("replace_mode") or "future_only").lower()
+    full_replace = replace_mode == "full"
+
     for entry in existing_entries:
         entry_date = scheduled_date(entry)
         has_session = entry.id in entry_ids_with_sessions
         is_logged = entry.completed or has_session or any(ex.completed for ex in entry.exercises)
 
+        if is_logged:
+            is_history = True  # Logged workouts are always preserved
+        elif full_replace:
+            is_history = False  # Full replace: unstarted past entries can change
+        elif entry_date and entry_date < today:
+            is_history = True  # future_only mode: preserve past entries
+        else:
+            is_history = False  # Future entries are always replaceable
 
-        is_history = False  # Calendar is always replaceable; Workout tab history is independent
         (preserved_entries if is_history else replaceable_entries).append(entry)
 
     if goal_data.get("title"):
@@ -721,15 +734,8 @@ async def update_goal_with_plan(ai_output: dict, session, goal_id, raw_json: dic
         for entry in preserved_entries
     }
 
-    new_plan_slots = {
-        (int(pe.get("week_number") or 1), pe.get("day_of_week"),
-         activity_kind(str(pe.get("activity") or ""), pe.get("exercises")))
-        for pe in plan_entries if isinstance(pe, dict)
-    }
-
     for entry in replaceable_entries:
-        if (entry.week_number, entry.day_of_week, activity_kind(entry.activity, entry.exercises)) in new_plan_slots:
-            await session.delete(entry)
+        await session.delete(entry)
     await session.flush()
 
     entries = []

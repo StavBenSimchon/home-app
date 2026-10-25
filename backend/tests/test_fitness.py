@@ -316,6 +316,7 @@ async def test_finalize_preserves_logged_history_and_replaces_future_plan(client
 
     output = {
         "goal": {"title": "Updated Goal"},
+        "replace_mode": "future_only",
         "plan": [
             {
                 "week_number": 1, "day_of_week": 0, "activity": "Renamed Current Workout",
@@ -330,14 +331,9 @@ async def test_finalize_preserves_logged_history_and_replaces_future_plan(client
         ],
     }
     result = await update_goal_with_plan(output, session, _uuid.UUID(goal_id), raw_json=output)
-    assert result["history_preserved"] == 0
+    assert result["history_preserved"] == 1  # logged entry preserved
 
-    # Logged entry/exercise and the Workout tab feed survive unchanged.
     # Workout tab history is preserved independently of plan changes
-
-
-
-
     history = await client.get(f"/goals/{goal_id}/sessions/log")
     assert history.status_code == 200
     assert len(history.json()) == 1
@@ -351,6 +347,69 @@ async def test_finalize_preserves_logged_history_and_replaces_future_plan(client
     assert len(week2) == 1
     assert week2[0]["activity"] == "New Future Workout"
     assert week2[0]["exercises"][0]["name"] == "New Future Exercise"
+
+
+@pytest.mark.asyncio
+async def test_finalize_future_only_preserves_past_entries(client: AsyncClient, session):
+    """future_only mode must not touch past calendar entries."""
+    import uuid as _uuid
+    from datetime import date, timedelta
+
+    from app.services.ai_service import update_goal_with_plan
+
+    goal_id = (await client.post("/goals/", json={"title": "Test"})).json()["id"]
+    # Past entry (week 1, day 0 = Monday of start week, before today)
+    past = (await client.post(f"/goals/{goal_id}/plans/", json={
+        "goal_id": goal_id, "week_number": 1, "day_of_week": 0, "activity": "Past Workout",
+    })).json()
+    # Future entry (week 3, day 0)
+    future = (await client.post(f"/goals/{goal_id}/plans/", json={
+        "goal_id": goal_id, "week_number": 3, "day_of_week": 0, "activity": "Future Workout",
+    })).json()
+
+    output = {
+        "goal": {"title": "Test"},
+        "replace_mode": "future_only",
+        "plan": [
+            {"week_number": 3, "day_of_week": 0, "activity": "New Future Workout", "duration_minutes": 30, "exercises": []},
+        ],
+    }
+    result = await update_goal_with_plan(output, session, _uuid.UUID(goal_id), raw_json=output)
+
+    plan = (await client.get(f"/goals/{goal_id}/plans/")).json()
+    activities = [e["activity"] for e in plan]
+    assert "Past Workout" in activities  # past entry preserved
+    assert "Old Future Workout" not in activities or "Future Workout" not in activities
+    assert "New Future Workout" in activities  # future entry replaced
+    assert result["history_preserved"] >= 1  # at least the past entry
+
+
+@pytest.mark.asyncio
+async def test_finalize_full_replace_changes_past_entries(client: AsyncClient, session):
+    """full mode must replace unlogged past entries (start fresh)."""
+    import uuid as _uuid
+
+    from app.services.ai_service import update_goal_with_plan
+
+    goal_id = (await client.post("/goals/", json={"title": "Test"})).json()["id"]
+    # Past entry (no logs)
+    past = (await client.post(f"/goals/{goal_id}/plans/", json={
+        "goal_id": goal_id, "week_number": 1, "day_of_week": 0, "activity": "Old Past Workout",
+    })).json()
+
+    output = {
+        "goal": {"title": "Test"},
+        "replace_mode": "full",
+        "plan": [
+            {"week_number": 1, "day_of_week": 0, "activity": "Fresh Start Workout", "duration_minutes": 30, "exercises": []},
+        ],
+    }
+    result = await update_goal_with_plan(output, session, _uuid.UUID(goal_id), raw_json=output)
+
+    plan = (await client.get(f"/goals/{goal_id}/plans/")).json()
+    activities = [e["activity"] for e in plan]
+    assert "Old Past Workout" not in activities  # past entry replaced
+    assert "Fresh Start Workout" in activities  # new entry created
 
 
 @pytest.mark.asyncio
