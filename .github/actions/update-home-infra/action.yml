@@ -2,6 +2,10 @@ name: Update Home Infra
 description: Bump image tags and chart version in the home-infra repo
 
 inputs:
+  app-name:
+    required: false
+    default: "home-app"
+    description: Which home-app instance to update (home-app, home-app-nathan, ...)
   chart-version:
     required: false
     default: ""
@@ -32,28 +36,22 @@ runs:
       if: ${{ inputs.chart-version != '' }}
       shell: bash
       run: |
-        for app in home-app home-app-nathan; do
-          yq -i '.spec.sources[0].targetRevision = "${{ inputs.chart-version }}"' \
-            "home-infra/environments/live/applications/$app.yaml"
-        done
+        yq -i '.spec.sources[0].targetRevision = "${{ inputs.chart-version }}"' \
+          "home-infra/environments/live/applications/${{ inputs.app-name }}.yaml"
 
     - name: Update backend tag
       if: ${{ inputs.backend-tag != '' }}
       shell: bash
       run: |
-        for app in home-app home-app-nathan; do
-          yq -i '.backend.image.tag = "${{ inputs.backend-tag }}"' \
-            "home-infra/environments/live/values/$app-values.yaml"
-        done
+        yq -i '.backend.image.tag = "${{ inputs.backend-tag }}"' \
+          "home-infra/environments/live/values/${{ inputs.app-name }}-values.yaml"
 
     - name: Update frontend tag
       if: ${{ inputs.frontend-tag != '' }}
       shell: bash
       run: |
-        for app in home-app home-app-nathan; do
-          yq -i '.frontend.image.tag = "${{ inputs.frontend-tag }}"' \
-            "home-infra/environments/live/values/$app-values.yaml"
-        done
+        yq -i '.frontend.image.tag = "${{ inputs.frontend-tag }}"' \
+          "home-infra/environments/live/values/${{ inputs.app-name }}-values.yaml"
 
     - name: Commit and push
       shell: bash

@@ -1,0 +1,38 @@
+name: Deploy to nathan
+
+on:
+  workflow_run:
+    workflows: ["Publish Docker images"]
+    types: [completed]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine which images the publish run built
+        id: tags
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=$(echo "${{ github.event.workflow_run.head_sha || github.sha }}" | cut -c1-7)
+          echo "short=$TAG" >> $GITHUB_OUTPUT
+          JOBS=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id || '0' }}/jobs \
+            --paginate -q '.jobs[] | select(.name=="backend" or .name=="frontend") | .name + "=" + (.conclusion // "unknown")')
+          echo "$JOBS"
+          echo "$JOBS" | grep -q "^backend=success$" && echo "backend=$TAG" >> $GITHUB_OUTPUT || true
+          echo "$JOBS" | grep -q "^frontend=success$" && echo "frontend=$TAG" >> $GITHUB_OUTPUT || true
+
+      - name: Update home-infra (nathan)
+        uses: ./.github/actions/update-home-infra
+        with:
+          app-name: home-app-nathan
+          backend-tag: ${{ steps.tags.outputs.backend }}
+          frontend-tag: ${{ steps.tags.outputs.frontend }}
+          gh-pat: ${{ secrets.GH_PAT }}

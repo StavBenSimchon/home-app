@@ -122,6 +122,7 @@ jobs:
       - name: Update home-infra
         uses: ./.github/actions/update-home-infra
         with:
+          app-name: home-app
           backend-tag: ${{ steps.tags.outputs.backend }}
           frontend-tag: ${{ steps.tags.outputs.frontend }}
           gh-pat: ${{ secrets.GH_PAT }}
