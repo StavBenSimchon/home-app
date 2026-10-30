@@ -32,22 +32,28 @@ runs:
       if: ${{ inputs.chart-version != '' }}
       shell: bash
       run: |
-        yq -i '.spec.sources[0].targetRevision = "${{ inputs.chart-version }}"' \
-          home-infra/environments/live/applications/home-app.yaml
+        for app in home-app home-app-nathan; do
+          yq -i '.spec.sources[0].targetRevision = "${{ inputs.chart-version }}"' \
+            "home-infra/environments/live/applications/$app.yaml"
+        done
 
     - name: Update backend tag
       if: ${{ inputs.backend-tag != '' }}
       shell: bash
       run: |
-        yq -i '.backend.image.tag = "${{ inputs.backend-tag }}"' \
-          home-infra/environments/live/values/home-app-values.yaml
+        for app in home-app home-app-nathan; do
+          yq -i '.backend.image.tag = "${{ inputs.backend-tag }}"' \
+            "home-infra/environments/live/values/$app-values.yaml"
+        done
 
     - name: Update frontend tag
       if: ${{ inputs.frontend-tag != '' }}
       shell: bash
       run: |
-        yq -i '.frontend.image.tag = "${{ inputs.frontend-tag }}"' \
-          home-infra/environments/live/values/home-app-values.yaml
+        for app in home-app home-app-nathan; do
+          yq -i '.frontend.image.tag = "${{ inputs.frontend-tag }}"' \
+            "home-infra/environments/live/values/$app-values.yaml"
+        done
 
     - name: Commit and push
       shell: bash
