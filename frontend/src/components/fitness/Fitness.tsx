@@ -39,7 +39,8 @@ export default function Fitness() {
   useEffect(() => { loadGoal(); }, [loadGoal]);
   useEffect(() => { if (goalId) loadEntries(goalId); }, [goalId, loadEntries]);
 
-  function refresh() {
+  async function refresh() {
+    await loadGoal();
     if (goalId) loadEntries(goalId);
   }
 
@@ -52,12 +53,24 @@ export default function Fitness() {
   const sharedProps = { goal: goal as Goal | null, entries, refresh, onToggle: handleToggle };
 
   if (!hasGoal && !loading) {
+    if (tab === "coach") {
+      return (
+        <main className="responsive-container">
+          <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+          <PageHeader />
+          <div className="fitness-content">
+            <AICoach goal={goal} onPlanUpdated={refresh} />
+          </div>
+          <TabBar current={tab} onChange={setTab} />
+        </main>
+      );
+    }
     return (
       <main className="responsive-container">
         <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
         <PageHeader />
         <div style={{ maxWidth: 520, margin: "0 auto", textAlign: "center", padding: "5rem 1rem" }}>
-          <div style={{ fontSize: "2.75rem", marginBottom: "0.5rem" }}>🧠</div>
+          <div style={{ fontSize: "2.75rem", marginBottom: "0.5rem" }}>dY�</div>
           <h1 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.5rem" }}>Meet your AI Coach</h1>
           <p style={{ color: "var(--text-muted)", marginBottom: "1.5rem", lineHeight: 1.6, fontSize: "0.95rem" }}>
             Answer a few questions and your coach builds a personalized plan, schedules it on your calendar,
@@ -65,12 +78,9 @@ export default function Fitness() {
           </p>
           <button onClick={() => setTab("coach")}
             style={{ background: "var(--primary)", color: "#fff", border: "none", borderRadius: 10, padding: "0.7rem 1.5rem", fontSize: "0.95rem", fontWeight: 600, cursor: "pointer" }}>
-            Start onboarding →
+            Start onboarding �+' 
           </button>
           <TabBar current={tab} onChange={setTab} />
-        </div>
-        <div className="fitness-content" style={{ display: "none" }}>
-          {tab === "coach" && <AICoach goal={goal} onPlanUpdated={refresh} />}
         </div>
       </main>
     );
